@@ -1,0 +1,26 @@
+language: rust
+
+dist: trusty
+sudo: required
+
+os:
+  - linux
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - llvm-toolchain-precise-3.9
+    packages:
+      - llvm-3.9
+      - llvm-3.9-dev
+      - clang-3.9
+      - libedit-dev
+rust:
+  - 1.20.0
+
+script:
+  - which llvm-config
+  - llvm-config --version
+  - cargo build --verbose
+  - cargo test --verbose

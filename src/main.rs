@@ -29,5 +29,6 @@ fn main() {
         parser::parse_simple_expr("5 / a3 + 11 * 10");
         parser::parse_simple_expr("5.2 /. 0.3");
         parser::parse_simple_expr(" a * (b + 3)");
+        parser::parse_simple_expr("-2 * 3");
     }
 }

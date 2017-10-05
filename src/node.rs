@@ -1,15 +1,16 @@
 use std::boxed::Box;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NodeKind {
     Bool(bool),
     Int(i32),
     Float(f64),
     Ident(String),
+    Neg(Box<NodeKind>),
     BinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinOps {
     IAdd,
     FAdd,

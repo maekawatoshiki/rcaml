@@ -1,0 +1,12 @@
+version: 2
+
+jobs:
+  build:
+    working_directory: /opt/rcaml
+
+    docker:
+      - image: uint256/rcaml:latest
+
+    steps:
+      - run:
+          command: cargo test

@@ -1,3 +1,8 @@
+extern crate rcaml;
+
+use rcaml::parser;
+
 fn main() {
-    println!("Hello, world!");
+    parser::parse_simple_expr("5 /2 + 11 * 10");
+    parser::parse_simple_expr("5.2 /. 0.3");
 }

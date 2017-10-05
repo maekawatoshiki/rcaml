@@ -2,8 +2,10 @@ use std::boxed::Box;
 
 #[derive(Debug, Clone)]
 pub enum NodeKind {
+    Bool(bool),
     Int(i32),
     Float(f64),
+    Ident(String),
     BinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
 }
 

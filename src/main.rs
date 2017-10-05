@@ -26,7 +26,8 @@ fn main() {
     } else if let Some(filename) = app.value_of("FILE") {
         println!("input filename: {}", filename);
     } else {
-        parser::parse_simple_expr("5 /2 + 11 * 10");
+        parser::parse_simple_expr("5 / a3 + 11 * 10");
         parser::parse_simple_expr("5.2 /. 0.3");
+        parser::parse_simple_expr(" a * (b + 3)");
     }
 }

@@ -1,4 +1,4 @@
-use nom::{IResult, alpha, digit, double};
+use nom::{IResult, alpha, alphanumeric, digit, double};
 
 use std::str;
 use std::str::FromStr;
@@ -7,7 +7,11 @@ use node::{NodeKind, BinOps};
 use node;
 use std::boxed::Box;
 
-named!(pub space, eat_separator!(&b" \t"[..]));
+// syntax reference: https://caml.inria.fr/pub/docs/manual-ocaml/language.html
+
+fn to_str(slice: &[u8]) -> &str {
+    str::from_utf8(slice).unwrap()
+}
 
 named!(expr<NodeKind>, 
     do_parse!(
@@ -59,7 +63,7 @@ named!(expr_add_sub<NodeKind>,
 named!(integer<NodeKind>, 
     do_parse!(
         i: map_res!(map_res!(
-           ws!(digit),
+            ws!(digit),
             str::from_utf8
         ), FromStr::from_str) >>
         (NodeKind::Int(i))
@@ -73,8 +77,36 @@ named!(float<NodeKind>,
     )
 );
 
+named!(ident<NodeKind>,
+    ws!(do_parse!(
+        bgn:    alt!(alpha | tag!("_")) >> 
+        remain: opt!(alphanumeric) >> 
+        (NodeKind::Ident(
+            if let Some(s) = remain {
+                to_str(bgn).to_string() + to_str(s)
+            } else {
+                to_str(bgn).to_string()
+            }
+        ))
+    ))
+);
+
+named!(bool_true<NodeKind>,
+    ws!(do_parse!( tag!("true") >> (NodeKind::Bool(true)) ))
+);
+
+named!(bool_false<NodeKind>,
+    ws!(do_parse!( tag!("false") >> (NodeKind::Bool(false)) ))
+);
+
+named!(constant<NodeKind>,
+    alt_complete!(float | integer | ident | bool_false | bool_true)
+);
+
+named!(parens<NodeKind>, ws!(delimited!(tag!("("), expr, tag!(")"))));
+
 named!(expr_prim<NodeKind>,
-    alt_complete!(float | integer)
+    alt!(constant | parens)
 );
 
 pub fn parse_simple_expr(e: &str) {
@@ -89,4 +121,5 @@ pub fn parse_simple_expr(e: &str) {
 pub fn test_parse_simple_expr() {
     parse_simple_expr("5 / 2 + 11 * 10");
     parse_simple_expr("5.3 *. 10.2");
+    parse_simple_expr(" a * (b + 3)");
 }

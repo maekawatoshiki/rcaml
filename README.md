@@ -1,3 +1,3 @@
 # rcaml
-- rcaml is an OCaml implementation in Rust
+- rcaml is an OCaml-like implementation in Rust
 

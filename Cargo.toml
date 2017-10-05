@@ -1,6 +1,15 @@
 [package]
 name = "rcaml"
 version = "0.1.0"
-authors = ["uint256_t <konndennsa@gmail.com>"]
+authors = ["uint256_t"]
 
 [dependencies]
+llvm-sys = "39.0.0"
+
+lazy_static = "0.2.6"
+
+ansi_term = "0.9.0"
+
+libc = "*"
+
+nom = "^3.2"

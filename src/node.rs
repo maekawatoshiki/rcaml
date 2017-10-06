@@ -7,6 +7,8 @@ pub enum NodeKind {
     Float(f64),
     Ident(String),
     Call(Box<NodeKind>, Vec<NodeKind>),
+    FuncDef(Box<NodeKind>, Vec<NodeKind>), // name, params
+    Let(Box<NodeKind>, Box<NodeKind>, Box<NodeKind>), // name, bound expr, body
     UnaryOp(UnaryOps, Box<NodeKind>),
     BinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
 }

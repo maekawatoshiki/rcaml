@@ -24,17 +24,55 @@ named!(whitespace<()>, do_parse!(
 ));
 
 named!(opt_spaces<()>, do_parse!(
-    many0!(alt!(whitespace)) >> ()
+    many0!(alt!(whitespace | comment)) >> ()
 ));
 
 named!(spaces<()>, do_parse!(
-    many1!(alt!(whitespace)) >> ()
+    many1!(alt!(whitespace | comment)) >> ()
 ));
 
+named!(keyword<&[u8]>, 
+    do_parse!(
+        k: alt!(
+            tag!("true") |
+            tag!("false") |
+            tag!("if") |
+            tag!("then") |
+            tag!("else") |
+            tag!("let") |
+            tag!("rec") |
+            tag!("in")
+        ) >> not!(peek!(alphanumeric)) >> (k)
+    )
+);
+
+named!(funcdef<NodeKind>, 
+    do_parse!(
+        name:   ident >> // TODO: not only identifier... (https://caml.inria.fr/pub/docs/manual-ocaml/patterns.html#pattern)
+        params: many1!(do_parse!(spaces >> param: ident >> (param))) >>
+        (NodeKind::FuncDef(Box::new(name), params))
+    )
+);
+
+named!(expr_let<NodeKind>,
+    do_parse!(
+        tag!("let") >>
+        spaces >> 
+        name: alt!(funcdef | ident) >> 
+        ws!(tag!("=")) >>
+        exp: expr >>
+        spaces >>
+        tag!("in") >> 
+        spaces >> 
+        body: expr >>
+        (NodeKind::Let(Box::new(name), Box::new(exp), Box::new(body)))
+    )
+);
 
 named!(expr<NodeKind>, 
-    alt!(
-        expr_add_sub
+    alt_complete!(
+            expr_let
+        |   expr_add_sub
     )
 );
 
@@ -150,6 +188,7 @@ named!(float<NodeKind>,
 
 named!(ident<NodeKind>,
     do_parse!(
+        not!(keyword) >> 
         bgn:    alt!(alpha | tag!("_")) >> 
         remain: opt!(alphanumeric) >> 
         (NodeKind::Ident(

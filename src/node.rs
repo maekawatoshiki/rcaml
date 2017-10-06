@@ -6,7 +6,8 @@ pub enum NodeKind {
     Int(i32),
     Float(f64),
     Ident(String),
-    Neg(Box<NodeKind>),
+    Call(Box<NodeKind>, Vec<NodeKind>),
+    UnaryOp(UnaryOps, Box<NodeKind>),
     BinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
 }
 
@@ -34,5 +35,19 @@ pub fn str_to_binop(opstr: &str) -> BinOps {
         "/" => BinOps::IDiv,
         "/." => BinOps::FDiv,
         _ => BinOps::IAdd,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOps {
+    INeg,
+    FNeg,
+}
+
+pub fn str_to_unaryop(opstr: &str) -> UnaryOps {
+    match opstr {
+        "-" => UnaryOps::INeg,
+        "-." => UnaryOps::FNeg,
+        _ => panic!(),
     }
 }

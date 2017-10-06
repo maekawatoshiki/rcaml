@@ -1,4 +1,4 @@
-use nom::{IResult, alpha, alphanumeric, digit, double};
+use nom::{IResult, alpha, alphanumeric, digit, double, space};
 
 use std::str;
 use std::str::FromStr;
@@ -14,6 +14,24 @@ fn to_str(slice: &[u8]) -> &str {
     str::from_utf8(slice).unwrap()
 }
 
+named!(comment<()>, do_parse!(
+    tag!("(*") >>
+    take_until!("*)") >> ()
+));
+
+named!(whitespace<()>, do_parse!(
+    one_of!(" \t\n\r") >> ()
+));
+
+named!(opt_spaces<()>, do_parse!(
+    many0!(alt!(whitespace)) >> ()
+));
+
+named!(spaces<()>, do_parse!(
+    many1!(alt!(whitespace)) >> ()
+));
+
+
 named!(expr<NodeKind>, 
     alt!(
         expr_add_sub
@@ -22,9 +40,15 @@ named!(expr<NodeKind>,
 
 named!(expr_mul_div<NodeKind>,
     do_parse!(
-        init: expr_prim >> 
+        init: expr_unary >> 
         res:  fold_many0!(
-                pair!(alt!(tag!("*.") | tag!("/.") | tag!("*") | tag!("/")), expr_prim),
+                do_parse!(
+                    opt_spaces >> 
+                    op: alt!(tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
+                    opt_spaces >> 
+                    rhs: expr_mul_div >> 
+                    (op, rhs)
+                ),
                 init,
                 |n1, (op, n2): (&[u8], NodeKind)| {
                     let op = node::str_to_binop(str::from_utf8(op).unwrap());
@@ -38,7 +62,13 @@ named!(expr_add_sub<NodeKind>,
     do_parse!(
         init: expr_mul_div >> 
         res:  fold_many0!(
-                pair!(alt!(tag!("+.") | tag!("-.") | tag!("+") | tag!("-")), expr_mul_div),
+                do_parse!(
+                    opt_spaces >> 
+                    op: alt!(tag!("+.") | tag!("-.") | tag!("+") | tag!("-")) >> 
+                    opt_spaces >> 
+                    rhs: expr_mul_div >> 
+                    (op, rhs)
+                ),
                 init,
                 |n1, (op, n2): (&[u8], NodeKind)| {
                     let op = node::str_to_binop(str::from_utf8(op).unwrap());
@@ -48,19 +78,63 @@ named!(expr_add_sub<NodeKind>,
     )
 );
 
+named!(expr_func_call<NodeKind>,
+    do_parse!(
+        p: expr_prim >>
+        args:   fold_many0!(
+                expr,
+                Vec::new(),
+                |mut a: Vec<NodeKind>, arg: NodeKind| {
+                    a.push(arg);
+                    a
+                }
+        ) >> (if args.len() == 0 { p } else { NodeKind::Call(Box::new(p), args) })
+    )
+);
+
+named!(expr_unary<NodeKind>,
+    alt!(
+        do_parse!(
+            opt_spaces >> 
+            op: alt!(tag!("-.") | tag!("-")) >> 
+            opt_spaces >> 
+            e: expr_unary >> 
+            (NodeKind::UnaryOp(node::str_to_unaryop(str::from_utf8(op).unwrap()), Box::new(e)))
+        ) | 
+        expr_postfix
+    )
+);
+
+named!(apply_postfix<Vec<NodeKind>>, do_parse!(
+    spaces >>
+    args: separated_nonempty_list_complete!(spaces, expr_prim) >>
+    (args)
+));
+
+named!(expr_postfix<NodeKind>,
+    do_parse!(
+        init: expr_prim >> 
+        folded: fold_many0!(
+            apply_postfix,
+            init,
+            |lhs, pf| {
+                NodeKind::Call(Box::new(lhs), pf)
+            }
+        ) >> (folded)
+    ) 
+);
+
 named!(expr_prim<NodeKind>,
     alt!(
           constant 
         | parens
-        | neg_integer
-        | neg_float
-        )
+    )
 );
 
 named!(integer<NodeKind>, 
     do_parse!(
         i: map_res!(map_res!(
-            ws!(digit),
+            digit,
             str::from_utf8
         ), FromStr::from_str) >>
         (NodeKind::Int(i))
@@ -69,13 +143,13 @@ named!(integer<NodeKind>,
 
 named!(float<NodeKind>,
     do_parse!(
-        f: ws!(double) >> 
+        f: double >> 
         (NodeKind::Float(f))
     )
 );
 
 named!(ident<NodeKind>,
-    ws!(do_parse!(
+    do_parse!(
         bgn:    alt!(alpha | tag!("_")) >> 
         remain: opt!(alphanumeric) >> 
         (NodeKind::Ident(
@@ -85,26 +159,22 @@ named!(ident<NodeKind>,
                 to_str(bgn).to_string()
             }
         ))
-    ))
+    )
 );
 
 named!(bool_true<NodeKind>,
-    ws!(do_parse!( tag!("true") >> (NodeKind::Bool(true)) ))
+    do_parse!( tag!("true") >> (NodeKind::Bool(true)) )
 );
 
 named!(bool_false<NodeKind>,
-    ws!(do_parse!( tag!("false") >> (NodeKind::Bool(false)) ))
+    do_parse!( tag!("false") >> (NodeKind::Bool(false)) )
 );
 
 named!(constant<NodeKind>,
     alt_complete!(float | integer | ident | bool_false | bool_true)
 );
 
-named!(parens<NodeKind>, ws!(delimited!(tag!("("), expr, tag!(")"))));
-
-named!(neg_integer<NodeKind>, do_parse!( e: preceded!(ws!(tag!("-")), expr) >> (NodeKind::Neg(Box::new(e))) ));
-
-named!(neg_float<NodeKind>, do_parse!( e: preceded!(ws!(tag!("-.")), expr) >> (NodeKind::Neg(Box::new(e))) ));
+named!(parens<NodeKind>, delimited!(tag!("("), expr, tag!(")")));
 
 
 pub fn parse_simple_expr(e: &str) {

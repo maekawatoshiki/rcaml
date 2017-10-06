@@ -28,7 +28,9 @@ fn main() {
     } else {
         parser::parse_simple_expr("5 / a3 + 11 * 10");
         parser::parse_simple_expr("5.2 /. 0.3");
-        parser::parse_simple_expr(" a * (b + 3)");
+        parser::parse_simple_expr("a * (b + 3)");
         parser::parse_simple_expr("-2 * 3");
+        parser::parse_simple_expr("f 1 2");
+        parser::parse_simple_expr("f (g (1 + x) 2)");
     }
 }

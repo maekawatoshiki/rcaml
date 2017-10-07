@@ -273,24 +273,26 @@ pub fn parse_simple_expr(e: &str) {
 }
 
 pub fn parse_module_item_expr(e: &str) {
-
     println!("module-item: {}\n{}", e, match module_item(e.as_bytes()) {
         IResult::Done(_, expr_node) => format!("generated node: {:?}", expr_node),
         IResult::Incomplete(needed) => format!("imcomplete: {:?}",     needed),
         IResult::Error(err) =>         format!("error: {:?}",          err)
     });
+}
 
+pub fn parse_and_infer_type(e: &str) {
+    println!("expr: {}", e);
+    let node = match module_item(e.as_bytes()) {
+        IResult::Done(_, node) => node,
+        _ => panic!(),
+    };
     // sloppy impl of showing type-infered node
     use typing;
     use id;
-    match module_item(e.as_bytes()) {
-        IResult::Done(_, expr_node) => {
-            let mut idgen = id::IdGen::new();
-            println!("type infered node: {:?}", typing::f(&expr_node, &mut idgen));
-        }
-        _ => panic!(),
-    }
+    let mut idgen = id::IdGen::new();
+    println!("generated node: {:?}\ntype infered node: {:?}", node, typing::f(&node, &mut idgen));
 }
+
 
 #[test]
 pub fn test_parse_simple_expr() {
@@ -315,4 +317,30 @@ pub fn test_parse_simple_expr() {
                FloatBinaryOp(FMul,
                         Box::new(Float(5.3)),
                         Box::new(Float(10.2))))
+}
+
+#[test]
+pub fn test_parse_module_item() {
+    use node::NodeKind::*;
+    use node::FuncDef;
+    use node::BinOps::*;
+    use node::BinOps::*;
+
+    let f = |e: &str| match module_item(e.as_bytes()) {
+        IResult::Done(_, expr_node) => expr_node,
+        IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}",     needed)),
+        IResult::Error(err) => panic!(format!("error: {:?}", err)),
+    };
+
+    assert_eq!(f("let f x = x * 2;;"),
+                LetFuncDef(
+                    FuncDef { name: ("f".to_string(), Type::Var(0)), 
+                              params: vec![("x".to_string(), Type::Var(0))] }, 
+                              Box::new(IntBinaryOp(IMul, 
+                                                   Box::new(Ident("x".to_string())), 
+                                                   Box::new(Int(2))))));
+    // assert_eq!(f("5.3 *. 10.2"),
+    //            FloatBinaryOp(FMul,
+    //                     Box::new(Float(5.3)),
+    //                     Box::new(Float(10.2))))
 }

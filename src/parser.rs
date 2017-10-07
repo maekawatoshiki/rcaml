@@ -6,6 +6,8 @@ use std::str::FromStr;
 use node;
 use node::NodeKind;
 
+use typing::Type;
+
 use std::boxed::Box;
 
 // syntax reference: https://caml.inria.fr/pub/docs/manual-ocaml/language.html
@@ -39,6 +41,9 @@ named!(keyword<&[u8]>,
             tag!("if") |
             tag!("then") |
             tag!("else") |
+            tag!("for") |
+            tag!("while") |
+            tag!("type") |
             tag!("let") |
             tag!("rec") |
             tag!("in")
@@ -50,7 +55,11 @@ named!(funcdef<NodeKind>,
     do_parse!(
         name:   ident >> // TODO: not only identifier... (https://caml.inria.fr/pub/docs/manual-ocaml/patterns.html#pattern)
         params: many1!(do_parse!(spaces >> param: ident >> (param))) >>
-        (NodeKind::FuncDef(Box::new(name), params))
+        (NodeKind::FuncDef(
+                (name.get_ident_name().unwrap(), Type::Var(None)), 
+                (params.into_iter().map(|param| ( param.get_ident_name().unwrap(), Type::Var(None) ) ).collect())
+                )
+        )
     )
 );
 
@@ -65,7 +74,28 @@ named!(expr_let<NodeKind>,
         tag!("in") >> 
         spaces >> 
         body: expr >>
-        (NodeKind::Let(Box::new(name), Box::new(exp), Box::new(body)))
+        (match name {
+            NodeKind::FuncDef(name, params) => NodeKind::LetFuncExpr(
+                                                node::FuncDef { name: name, params: params },
+                                                Box::new(exp),
+                                                Box::new(body)
+                                               ),
+            NodeKind::Ident(name)           => NodeKind::LetExpr(
+                                                (name, Type::Var(None)),
+                                                Box::new(exp),
+                                                Box::new(body)
+                                               ),
+            _                               => panic!()
+        })
+    )
+);
+
+named!(let_binding<(NodeKind, NodeKind)>, // (name, expr)
+    do_parse!(
+        name: alt!(funcdef | ident) >> 
+        ws!(tag!("=")) >>
+        exp: expr >>
+        ((name, exp))
     )
 );
 
@@ -216,8 +246,56 @@ named!(constant<NodeKind>,
 named!(parens<NodeKind>, delimited!(tag!("("), expr, tag!(")")));
 
 
+named!(opt_dscolon<()>, do_parse!(
+    many0!(tag!(";;")) >> ()
+));
+
+named!(module_item<NodeKind>,
+    do_parse!(
+        ws!(opt_dscolon) >> 
+        i: alt!(definition | expr) >> 
+        opt_spaces >> 
+        opt_dscolon >> (i)
+    )
+);
+
+named!(definition<NodeKind>,
+    alt!(
+        definition_let 
+    )
+);
+
+named!(definition_let<NodeKind>,
+    do_parse!(
+        tag!("let") >>
+        spaces >> 
+        name: alt!(funcdef | ident) >> 
+        ws!(tag!("=")) >>
+        exp: expr >>
+        (match name {
+            NodeKind::FuncDef(name, params) => NodeKind::LetFuncDef(
+                                                node::FuncDef { name: name, params: params },
+                                                Box::new(exp)
+                                               ),
+            NodeKind::Ident(name)           => NodeKind::LetDef(
+                                                (name, Type::Var(None)),
+                                                Box::new(exp)
+                                               ),
+            _                               => panic!()
+        })
+    )
+);
+
 pub fn parse_simple_expr(e: &str) {
     println!("expr: {}\n{}", e, match expr(e.as_bytes()) {
+        IResult::Done(_, expr_node) => format!("generated node: {:?}", expr_node),
+        IResult::Incomplete(needed) => format!("imcomplete: {:?}",     needed),
+        IResult::Error(err) =>         format!("error: {:?}",          err)
+    });
+}
+
+pub fn parse_module_item_expr(e: &str) {
+    println!("module-item: {}\n{}", e, match module_item(e.as_bytes()) {
         IResult::Done(_, expr_node) => format!("generated node: {:?}", expr_node),
         IResult::Incomplete(needed) => format!("imcomplete: {:?}",     needed),
         IResult::Error(err) =>         format!("error: {:?}",          err)

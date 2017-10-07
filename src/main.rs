@@ -34,5 +34,7 @@ fn main() {
         parser::parse_simple_expr("f (g (1 + x) 2)");
         parser::parse_simple_expr("let x = 1 in x * 2");
         parser::parse_simple_expr("let f x = x + 1 in f (1 + 2)");
+
+        parser::parse_module_item_expr("let f x = x + 1;; print_int (f 1)");
     }
 }

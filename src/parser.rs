@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use node;
 use node::NodeKind;
 
+use id::IdGen;
+
 use typing::Type;
 
 use std::boxed::Box;
@@ -264,6 +266,75 @@ named!(definition_let<NodeKind>,
     )
 );
 
+pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
+    match expr {
+        NodeKind::LetExpr((name, ty), expr, body) => {
+            let ty = if let Type::Var(_) = ty {
+                idgen.get_type()
+            } else {
+                ty
+            };
+            let expr = uniquify(*expr, idgen);
+            let body = uniquify(*body, idgen);
+            NodeKind::LetExpr((name, ty), Box::new(expr), Box::new(body))
+        }
+        NodeKind::LetFuncExpr(node::FuncDef {
+                                  name: (name, t),
+                                  mut params,
+                              },
+                              expr,
+                              body) => {
+            let t = if let Type::Var(_) = t {
+                idgen.get_type()
+            } else {
+                t
+            };
+            for i in 0..params.len() {
+                let entry = ::std::mem::replace(&mut params[i].1, Type::Unit);
+                let new_ty = if let Type::Var(_) = entry {
+                    idgen.get_type()
+                } else {
+                    entry
+                };
+                params[i].1 = new_ty;
+            }
+            let expr = Box::new(uniquify(*expr, idgen));
+            let body = Box::new(uniquify(*body, idgen));
+            NodeKind::LetFuncExpr(
+                node::FuncDef {
+                    name: (name, t),
+                    params: params,
+                },
+                expr,
+                body,
+            )
+        }
+        NodeKind::IntBinaryOp(op, e1, e2) => {
+            let e1 = Box::new(uniquify(*e1, idgen));
+            let e2 = Box::new(uniquify(*e2, idgen));
+            NodeKind::IntBinaryOp(op, e1, e2)
+        }
+        NodeKind::FloatBinaryOp(op, e1, e2) => {
+            let e1 = Box::new(uniquify(*e1, idgen));
+            let e2 = Box::new(uniquify(*e2, idgen));
+            NodeKind::FloatBinaryOp(op, e1, e2)
+        }
+        NodeKind::Call(e1, mut e2s) => {
+            let e1 = Box::new(uniquify(*e1, idgen));
+            uniquify_seq(&mut e2s, idgen);
+            NodeKind::Call(e1, e2s)
+        }
+        x => x, // No Syntax inside
+    }
+}
+
+fn uniquify_seq(seq: &mut Vec<NodeKind>, id_gen: &mut IdGen) {
+    for i in 0..seq.len() {
+        let entry = ::std::mem::replace(&mut seq[i], NodeKind::Unit);
+        seq[i] = uniquify(entry, id_gen);
+    }
+}
+
 pub fn parse_simple_expr(e: &str) {
     println!("expr: {}\n{}", e, match expr(e.as_bytes()) {
         IResult::Done(_, expr_node) => format!("generated node: {:?}", expr_node),
@@ -290,7 +361,8 @@ pub fn parse_and_infer_type(e: &str) {
     use typing;
     use id;
     let mut idgen = id::IdGen::new();
-    println!("generated node: {:?}\ntype infered node: {:?}", node, typing::f(&node, &mut idgen));
+    let uniquified = uniquify(node, &mut idgen);
+    println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified, &mut idgen));
 }
 
 

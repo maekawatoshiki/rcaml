@@ -3,6 +3,7 @@ use typing;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeKind {
+    Unit,
     Bool(bool),
     Int(i32),
     Float(f64),

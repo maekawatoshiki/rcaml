@@ -38,5 +38,6 @@ fn main() {
         parser::parse_module_item_expr("let f x = x * 2;;");
 
         parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
+        parser::parse_and_infer_type("let f x = x in f 1.3");
     }
 }

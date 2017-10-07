@@ -1,7 +1,7 @@
 use std::boxed::Box;
 use std::collections::HashMap;
 
-use node::NodeKind;
+use node::{NodeKind, FuncDef};
 use id;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,7 +34,8 @@ fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
             if let Some(t) = tyenv.get(n) {
                 deref_ty(t, tyenv)
             } else {
-                panic!("uninstantiated variable is not allowed now")
+                Type::Var(*n)
+                // panic!("uninstantiated variable is not allowed now")
             }
         }
         _ => ty.clone(),
@@ -42,6 +43,9 @@ fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
 }
 
 fn deref_term(node: &NodeKind, tyenv: &HashMap<usize, Type>) -> NodeKind {
+    macro_rules! apply_deref {
+        ($ary:expr) => ($ary.iter().map(|x| deref_term(x, tyenv)).collect::<Vec<_>>());
+    }
     match *node {
         NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => {
             NodeKind::IntBinaryOp(
@@ -57,11 +61,29 @@ fn deref_term(node: &NodeKind, tyenv: &HashMap<usize, Type>) -> NodeKind {
                 Box::new(deref_term(&**rhs, tyenv)),
             )
         }
+        NodeKind::Call(ref e, ref args) => {
+            NodeKind::Call(Box::new(deref_term(e, tyenv)), apply_deref!(args))
+        }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
             NodeKind::LetExpr(
                 (name.clone(), deref_ty(ty, tyenv)),
                 Box::new(deref_term(&**expr, tyenv)),
                 Box::new(deref_term(&**body, tyenv)),
+            )
+        }
+        NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
+            let (ref name, ref ty) = funcdef.name;
+            let params = &funcdef.params;
+            NodeKind::LetFuncExpr(
+                FuncDef {
+                    name: (name.to_string(), deref_ty(ty, tyenv)),
+                    params: params
+                        .iter()
+                        .map(|&(ref x, ref t)| (x.clone(), deref_ty(t, tyenv)))
+                        .collect::<Vec<_>>(),
+                },
+                Box::new(deref_term(expr, tyenv)),
+                Box::new(deref_term(body, tyenv)),
             )
         }
         _ => node.clone(),
@@ -120,6 +142,15 @@ pub fn g(
     tyenv: &mut HashMap<usize, Type>,
     idgen: &mut id::IdGen,
 ) -> Result<Type, TypeError> {
+    macro_rules! g_seq {
+        ($es:expr) => ({
+            let mut argtype = Vec::new();
+            for e in $es.iter() {
+                argtype.push(try!(g(e, env, tyenv, idgen)));
+            }
+            argtype.into_boxed_slice()
+        });
+    }
     match *node {
         NodeKind::Bool(_) => Ok(Type::Bool),
         NodeKind::Int(_) => Ok(Type::Int),
@@ -141,10 +172,40 @@ pub fn g(
             try!(unify(&try!(g(rhs, env, tyenv, idgen)), &Type::Float, tyenv));
             Ok(Type::Float)
         }
+        // Call(Box<NodeKind>, Vec<NodeKind>),
+        NodeKind::Call(ref callee, ref args) => {
+            let ty = idgen.get_type();
+            let functy = Type::Func(g_seq!(args), Box::new(ty.clone()));
+            try!(unify(&try!(g(callee, env, tyenv, idgen)), &functy, tyenv));
+            Ok(ty)
+        }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
             try!(unify(&try!(g(expr, env, tyenv, idgen)), ty, tyenv));
             let mut newenv = HashMap::new();
             newenv.insert(name.clone(), ty.clone());
+            g(body, &newenv, tyenv, idgen)
+        }
+        NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
+            let (name, ty) = funcdef.name.clone();
+            let params = &funcdef.params;
+            let mut newenv = env.clone();
+            newenv.insert(name.clone(), ty.clone());
+            let mut newenv_body = newenv.clone();
+            for &(ref x, ref t) in params.iter() {
+                newenv_body.insert(x.to_string(), t.clone());
+            }
+            try!(unify(
+                &ty,
+                &Type::Func(
+                    params
+                        .iter()
+                        .map(|p| p.1.clone())
+                        .collect::<Vec<_>>()
+                        .into_boxed_slice(),
+                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+                ),
+                tyenv,
+            ));
             g(body, &newenv, tyenv, idgen)
         }
         NodeKind::LetDef((ref name, ref ty), ref expr) => {

@@ -14,7 +14,8 @@ pub enum NodeKind {
     LetDef((String, typing::Type), Box<NodeKind>), // name, bound expr
     LetFuncDef(FuncDef, Box<NodeKind>), // name, bound expr
     UnaryOp(UnaryOps, Box<NodeKind>),
-    BinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
+    IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
+    FloatBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,17 +46,18 @@ pub enum BinOps {
     IMod,
 }
 
-pub fn str_to_binop(opstr: &str) -> BinOps {
+// return (op, is_int_op)
+pub fn str_to_binop(opstr: &str) -> (BinOps, bool) {
     match opstr {
-        "+" => BinOps::IAdd,
-        "+." => BinOps::FAdd,
-        "-" => BinOps::ISub,
-        "-." => BinOps::FSub,
-        "*" => BinOps::IMul,
-        "*." => BinOps::FMul,
-        "/" => BinOps::IDiv,
-        "/." => BinOps::FDiv,
-        _ => BinOps::IAdd,
+        "+" => (BinOps::IAdd, true),
+        "+." => (BinOps::FAdd, false),
+        "-" => (BinOps::ISub, true),
+        "-." => (BinOps::FSub, false),
+        "*" => (BinOps::IMul, true),
+        "*." => (BinOps::FMul, false),
+        "/" => (BinOps::IDiv, true),
+        "/." => (BinOps::FDiv, false),
+        _ => (BinOps::IAdd, true),
     }
 }
 

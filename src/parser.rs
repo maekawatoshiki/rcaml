@@ -1,4 +1,4 @@
-use nom::{IResult, alpha, alphanumeric, digit, double, space};
+use nom::{IResult, digit, double};
 
 use std::str;
 use std::str::FromStr;
@@ -298,7 +298,7 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             } else {
                 t
             };
-            for &mut (ref mut param_name, ref mut param_ty) in &mut params {
+            for &mut (_, ref mut param_ty) in &mut params {
                 let entry = ::std::mem::replace(param_ty, Type::Unit);
                 let new_ty = if let Type::Var(_) = entry {
                     idgen.get_type()
@@ -328,7 +328,7 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             } else {
                 t
             };
-            for &mut (ref mut param_name, ref mut param_ty) in &mut params {
+            for &mut (_, ref mut param_ty) in &mut params {
                 let entry = ::std::mem::replace(param_ty, Type::Unit);
                 let new_ty = if let Type::Var(_) = entry {
                     idgen.get_type()
@@ -372,7 +372,7 @@ fn uniquify_seq(seq: &mut Vec<NodeKind>, id_gen: &mut IdGen) {
     }
 }
 
-pub fn parse_simple_expr(e: &str) {
+pub fn parse_and_show_simple_expr(e: &str) {
     println!("expr: {}\n{}", e, match expr(e.as_bytes()) {
         IResult::Done(_, expr_node) => format!("generated node: {:?}", expr_node),
         IResult::Incomplete(needed) => format!("imcomplete: {:?}",     needed),
@@ -380,12 +380,34 @@ pub fn parse_simple_expr(e: &str) {
     });
 }
 
-pub fn parse_module_item_expr(e: &str) {
+pub fn parse_and_show_module_item(e: &str) {
     println!("module-item: {}\n{}", e, match module_item(e.as_bytes()) {
         IResult::Done(_, expr_node) => format!("generated node: {:?}", expr_node),
         IResult::Incomplete(needed) => format!("imcomplete: {:?}",     needed),
         IResult::Error(err) =>         format!("error: {:?}",          err)
     });
+}
+
+pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
+    use typing;
+    use id;
+
+    let mut idgen = id::IdGen::new();
+    let mut tyenv = HashMap::new();
+    let mut nodes = Vec::new();
+    let mut code = e;
+    while code.len() > 0 {
+        match module_item(code.as_bytes()) {
+            IResult::Done(remain, node) => {
+                let uniquified = uniquify(node, &mut idgen);
+                nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen));
+                code = str::from_utf8(remain).unwrap();
+            }
+            IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}",     needed)),
+            IResult::Error(err) => panic!(format!("error: {:?}",          err)),
+        }
+    }
+    nodes
 }
 
 pub fn parse_and_infer_type(e: &str) {
@@ -398,8 +420,22 @@ pub fn parse_and_infer_type(e: &str) {
     use typing;
     use id;
     let mut idgen = id::IdGen::new();
+    let mut tyenv = HashMap::new();
     let uniquified = uniquify(node, &mut idgen);
-    println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified, &mut idgen));
+    println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified,&mut tyenv, &mut idgen));
+}
+
+
+use std::sync::Mutex;
+
+lazy_static! {
+    pub static ref EXTENV: Mutex<HashMap<String, Type>> = {
+        let mut extenv = HashMap::new();
+        extenv.insert("print_int".to_string(), 
+                      Type::Func(vec![Type::Int], 
+                      Box::new(Type::Unit)));
+        Mutex::new(extenv)
+    };
 }
 
 

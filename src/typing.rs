@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use node::{NodeKind, FuncDef};
 use id;
 
+use parser::EXTENV;
+
 #[derive(Clone, PartialEq)]
 pub enum Type {
     Unit,
@@ -95,6 +97,12 @@ fn deref_term(node: &NodeKind, tyenv: &HashMap<usize, Type>) -> NodeKind {
                 Box::new(deref_term(&**body, tyenv)),
             )
         }
+        NodeKind::LetDef((ref name, ref ty), ref expr) => {
+            NodeKind::LetDef(
+                (name.clone(), deref_ty(ty, tyenv)),
+                Box::new(deref_term(&**expr, tyenv)),
+            )
+        }
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
             let (ref name, ref ty) = funcdef.name;
             let params = &funcdef.params;
@@ -108,6 +116,20 @@ fn deref_term(node: &NodeKind, tyenv: &HashMap<usize, Type>) -> NodeKind {
                 },
                 Box::new(deref_term(expr, tyenv)),
                 Box::new(deref_term(body, tyenv)),
+            )
+        }
+        NodeKind::LetFuncDef(ref funcdef, ref expr) => {
+            let (ref name, ref ty) = funcdef.name;
+            let params = &funcdef.params;
+            NodeKind::LetFuncDef(
+                FuncDef {
+                    name: (name.to_string(), deref_ty(ty, tyenv)),
+                    params: params
+                        .iter()
+                        .map(|&(ref x, ref t)| (x.clone(), deref_ty(t, tyenv)))
+                        .collect::<Vec<_>>(),
+                },
+                Box::new(deref_term(expr, tyenv)),
             )
         }
         _ => node.clone(),
@@ -180,6 +202,8 @@ pub fn g(
         NodeKind::Ident(ref name) => {
             if let Some(t) = env.get(name).cloned() {
                 Ok(t)
+            } else if let Some(t) = EXTENV.lock().unwrap().get(name).cloned() {
+                Ok(t)
             } else {
                 panic!("TODO: implement")
             }
@@ -229,13 +253,32 @@ pub fn g(
             try!(unify(&try!(g(expr, env, tyenv, idgen)), ty, tyenv));
             Ok(Type::Unit)
         }
+        NodeKind::LetFuncDef(ref funcdef, ref expr) => {
+            let (name, ty) = funcdef.name.clone();
+            let params = &funcdef.params;
+            let mut newenv = env.clone();
+            newenv.insert(name.clone(), ty.clone());
+            let mut newenv_body = newenv.clone();
+            for &(ref x, ref t) in params.iter() {
+                newenv_body.insert(x.to_string(), t.clone());
+            }
+            try!(unify(
+                &ty,
+                &Type::Func(
+                    params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
+                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+                ),
+                tyenv,
+            ));
+            EXTENV.lock().unwrap().insert(name.clone(), ty.clone());
+            Ok(Type::Unit)
+        }
         _ => panic!(),
     }
 }
 
-pub fn f(node: &NodeKind, idgen: &mut id::IdGen) -> NodeKind {
-    let mut tyenv = HashMap::new();
-    let infered_ty = g(node, &HashMap::new(), &mut tyenv, idgen);
+pub fn f(node: &NodeKind, tyenv: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> NodeKind {
+    let infered_ty = g(node, &HashMap::new(), tyenv, idgen);
     // TODO: originally maybe infered_ty must be Type::Unit
     deref_term(node, &tyenv)
 }

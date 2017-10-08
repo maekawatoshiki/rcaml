@@ -26,18 +26,25 @@ fn main() {
     } else if let Some(filename) = app.value_of("FILE") {
         println!("input filename: {}", filename);
     } else {
-        parser::parse_simple_expr("5 / a3 + 11 * 10");
-        parser::parse_simple_expr("5.2 /. 0.3");
-        parser::parse_simple_expr("a * (b + 3)");
-        parser::parse_simple_expr("-2 * 3");
-        parser::parse_simple_expr("f 1 2");
-        parser::parse_simple_expr("f (g (1 + x) 2)");
-        parser::parse_simple_expr("let x = 1 in x * 2");
-        parser::parse_simple_expr("let f x = x + 1 in f (1 + 2)");
+        parser::parse_and_show_simple_expr("5 / a3 + 11 * 10");
+        parser::parse_and_show_simple_expr("5.2 /. 0.3");
+        parser::parse_and_show_simple_expr("a * (b + 3)");
+        parser::parse_and_show_simple_expr("-2 * 3");
+        parser::parse_and_show_simple_expr("f 1 2");
+        parser::parse_and_show_simple_expr("f (g (1 + x) 2)");
+        parser::parse_and_show_simple_expr("let x = 1 in x * 2");
+        parser::parse_and_show_simple_expr("let f x = x + 1 in f (1 + 2)");
 
-        parser::parse_module_item_expr("let f x = x * 2;;");
+        parser::parse_and_show_module_item("let f x = x * 2;;");
 
         parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
         parser::parse_and_infer_type("let f x = x in f 1.3");
+
+        let e = "let f x = x + 1;; let g x = f (x + 1);; print_int (f 1)";
+        println!(">> {}", e);
+        let nodes = parser::parse_module_items(e);
+        for (i, node) in nodes.iter().enumerate() {
+            println!("{}:\t{:?}", i, node);
+        }
     }
 }

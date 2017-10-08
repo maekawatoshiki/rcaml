@@ -278,6 +278,15 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             let body = uniquify(*body, idgen);
             NodeKind::LetExpr((name, ty), Box::new(expr), Box::new(body))
         }
+        NodeKind::LetDef((name, ty), expr) => {
+            let ty = if let Type::Var(_) = ty {
+                idgen.get_type()
+            } else {
+                ty
+            };
+            let expr = uniquify(*expr, idgen);
+            NodeKind::LetDef((name, ty), Box::new(expr))
+        }
         NodeKind::LetFuncExpr(node::FuncDef {
                                   name: (name, t),
                                   mut params,
@@ -289,14 +298,14 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             } else {
                 t
             };
-            for i in 0..params.len() {
-                let entry = ::std::mem::replace(&mut params[i].1, Type::Unit);
+            for &mut (ref mut param_name, ref mut param_ty) in &mut params {
+                let entry = ::std::mem::replace(param_ty, Type::Unit);
                 let new_ty = if let Type::Var(_) = entry {
                     idgen.get_type()
                 } else {
                     entry
                 };
-                params[i].1 = new_ty;
+                *param_ty = new_ty;
             }
             let expr = Box::new(uniquify(*expr, idgen));
             let body = Box::new(uniquify(*body, idgen));
@@ -307,6 +316,34 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
                 },
                 expr,
                 body,
+            )
+        }
+        NodeKind::LetFuncDef(node::FuncDef {
+                                 name: (name, t),
+                                 mut params,
+                             },
+                             expr) => {
+            let t = if let Type::Var(_) = t {
+                idgen.get_type()
+            } else {
+                t
+            };
+            for &mut (ref mut param_name, ref mut param_ty) in &mut params {
+                let entry = ::std::mem::replace(param_ty, Type::Unit);
+                let new_ty = if let Type::Var(_) = entry {
+                    idgen.get_type()
+                } else {
+                    entry
+                };
+                *param_ty = new_ty;
+            }
+            let expr = Box::new(uniquify(*expr, idgen));
+            NodeKind::LetFuncDef(
+                node::FuncDef {
+                    name: (name, t),
+                    params: params,
+                },
+                expr,
             )
         }
         NodeKind::IntBinaryOp(op, e1, e2) => {

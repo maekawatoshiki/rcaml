@@ -4,15 +4,40 @@ use std::collections::HashMap;
 use node::{NodeKind, FuncDef};
 use id;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Type {
     Unit,
     Bool,
     Int,
     Float,
     Char,
-    Func(Box<[Type]>, Box<Type>), // (param types, return type)
+    Func(Vec<Type>, Box<Type>), // (param types, return type)
     Var(usize), // id
+}
+
+impl Type {
+    pub fn to_string(&self) -> String {
+        match self {
+            &Type::Unit => "unit".to_string(),
+            &Type::Bool => "bool".to_string(),
+            &Type::Char => "char".to_string(),
+            &Type::Int => "int".to_string(),
+            &Type::Float => "float".to_string(),
+            &Type::Func(ref param_tys, ref ret_ty) => {
+                param_tys.into_iter().fold("".to_string(), |acc, ts| {
+                    acc + ts.to_string().as_str() + " -> "
+                }) + ret_ty.to_string().as_str() + " = <fun>"
+            }
+            &Type::Var(id) => format!("var({})", id),
+        }
+    }
+}
+
+use std::fmt;
+impl fmt::Debug for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
 }
 
 #[derive(Debug)]
@@ -22,9 +47,8 @@ pub enum TypeError {
 
 fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
     macro_rules! deref_typ_list {
-        ($ls:expr) => ($ls.iter().map(|x| deref_ty(x, tyenv))
-                                  .collect::<Vec<_>>()
-                                 .into_boxed_slice());
+        ($list:expr) => ($list.iter().map(|x| deref_ty(x, tyenv))
+                                  .collect::<Vec<_>>());
     }
     match *ty {
         Type::Func(ref p, ref r) => Type::Func(deref_typ_list!(p), Box::new(deref_ty(r, tyenv))),
@@ -144,11 +168,9 @@ pub fn g(
 ) -> Result<Type, TypeError> {
     macro_rules! g_seq {
         ($es:expr) => ({
-            let mut argtype = Vec::new();
-            for e in $es.iter() {
-                argtype.push(try!(g(e, env, tyenv, idgen)));
-            }
-            argtype.into_boxed_slice()
+            let mut argtys = Vec::new();
+            for e in $es.iter() { argtys.push(try!(g(e, env, tyenv, idgen))); }
+            argtys 
         });
     }
     match *node {
@@ -172,7 +194,6 @@ pub fn g(
             try!(unify(&try!(g(rhs, env, tyenv, idgen)), &Type::Float, tyenv));
             Ok(Type::Float)
         }
-        // Call(Box<NodeKind>, Vec<NodeKind>),
         NodeKind::Call(ref callee, ref args) => {
             let ty = idgen.get_type();
             let functy = Type::Func(g_seq!(args), Box::new(ty.clone()));
@@ -197,11 +218,7 @@ pub fn g(
             try!(unify(
                 &ty,
                 &Type::Func(
-                    params
-                        .iter()
-                        .map(|p| p.1.clone())
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
+                    params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
                     Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
                 ),
                 tyenv,

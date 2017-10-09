@@ -40,7 +40,8 @@ fn main() {
         parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
         parser::parse_and_infer_type("let f x = x in f 1.3");
 
-        let e = "let f x = x + 1;; let g x = f (x + 1);; print_int (f 1)";
+        // let e = "let f x = x;; f 1;; f 1.3";
+        let e = "print_int 12;; print_newline ()";
         println!(">> {}", e);
         let nodes = parser::parse_module_items(e);
         for (i, node) in nodes.iter().enumerate() {

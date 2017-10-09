@@ -1,5 +1,6 @@
 use typing::Type;
 
+#[derive(Clone)]
 pub struct IdGen {
     n: usize,
 }

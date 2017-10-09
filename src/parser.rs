@@ -174,6 +174,7 @@ named!(expr_prim<NodeKind>,
     alt!(
           constant 
         | parens
+        | unit
     )
 );
 
@@ -225,6 +226,8 @@ named!(constant<NodeKind>,
 );
 
 named!(parens<NodeKind>, delimited!(tag!("("), expr, tag!(")")));
+
+named!(unit<NodeKind>, do_parse!(tag!("(") >> tag!(")") >> (NodeKind::Unit)));
 
 
 named!(opt_dscolon<()>, do_parse!(
@@ -391,21 +394,39 @@ pub fn parse_and_show_module_item(e: &str) {
 pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
     use typing;
     use id;
+    use codegen;
 
     let mut idgen = id::IdGen::new();
     let mut tyenv = HashMap::new();
     let mut nodes = Vec::new();
     let mut code = e;
+
     while code.len() > 0 {
         match module_item(code.as_bytes()) {
             IResult::Done(remain, node) => {
                 let uniquified = uniquify(node, &mut idgen);
-                nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen));
+                match &uniquified {
+                    &NodeKind::LetDef(_, _) |
+                    &NodeKind::LetFuncDef(_, _) => {
+                        nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen))
+                    }
+                    _ => {
+                        nodes.push(typing::f(
+                            &uniquified,
+                            &mut tyenv.clone(),
+                            &mut idgen.clone(),
+                        ))
+                    }
+                }
                 code = str::from_utf8(remain).unwrap();
             }
             IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}",     needed)),
             IResult::Error(err) => panic!(format!("error: {:?}",          err)),
         }
+    }
+    unsafe {
+        let mut codegen = codegen::CodeGen::new(&mut tyenv);
+        codegen.gen(nodes.clone());
     }
     nodes
 }
@@ -433,6 +454,12 @@ lazy_static! {
         let mut extenv = HashMap::new();
         extenv.insert("print_int".to_string(), 
                       Type::Func(vec![Type::Int], 
+                      Box::new(Type::Unit)));
+        extenv.insert("print_float".to_string(), 
+                      Type::Func(vec![Type::Float], 
+                      Box::new(Type::Unit)));
+        extenv.insert("print_newline".to_string(), 
+                      Type::Func(vec![Type::Unit], 
                       Box::new(Type::Unit)));
         Mutex::new(extenv)
     };

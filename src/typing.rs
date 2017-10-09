@@ -6,7 +6,7 @@ use id;
 
 use parser::EXTENV;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Unit,
     Bool,
@@ -151,6 +151,7 @@ fn occur(r1: usize, ty: &Type) -> bool {
 
 pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(), TypeError> {
     match (t1, t2) {
+        (&Type::Unit, &Type::Unit) => Ok(()),
         (&Type::Bool, &Type::Bool) => Ok(()),
         (&Type::Char, &Type::Char) => Ok(()),
         (&Type::Int, &Type::Int) => Ok(()),
@@ -196,6 +197,7 @@ pub fn g(
         });
     }
     match *node {
+        NodeKind::Unit => Ok(Type::Unit),
         NodeKind::Bool(_) => Ok(Type::Bool),
         NodeKind::Int(_) => Ok(Type::Int),
         NodeKind::Float(_) => Ok(Type::Float),
@@ -279,6 +281,9 @@ pub fn g(
 
 pub fn f(node: &NodeKind, tyenv: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> NodeKind {
     let infered_ty = g(node, &HashMap::new(), tyenv, idgen);
+    println!("f: {:?}", infered_ty);
     // TODO: originally maybe infered_ty must be Type::Unit
-    deref_term(node, &tyenv)
+    let r = deref_term(node, &tyenv);
+    println!("{:?}", tyenv);
+    r
 }

@@ -31,6 +31,7 @@ pub struct CodeGen<'a> {
     exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
     tyenv: &'a mut HashMap<usize, Type>,
     ext_funcmap: HashMap<String, ExtFunc>,
+    global_varmap: HashMap<String, (Type, LLVMTypeRef, LLVMValueRef)>,
 }
 
 pub enum CodeGenError {
@@ -44,7 +45,7 @@ pub extern "C" fn print_int(i: i32) {
     print!("{}", i);
 }
 #[no_mangle]
-pub extern "C" fn print_newline() {
+pub extern "C" fn print_newline(_: i32) {
     print!("\n");
 }
 
@@ -110,7 +111,7 @@ impl<'a> CodeGen<'a> {
             ext_funcmap.insert(
                 "print_newline".to_string(),
                 ExtFunc {
-                    ty: Type::Func(vec![], Box::new(Type::Unit)),
+                    ty: Type::Func(vec![Type::Unit], Box::new(Type::Unit)),
                     llvm_val: f_print_newline,
                 },
             );
@@ -128,6 +129,7 @@ impl<'a> CodeGen<'a> {
             exec_engine: ee,
             tyenv: tyenv,
             ext_funcmap: ext_funcmap,
+            global_varmap: HashMap::new(),
         }
     }
 
@@ -143,7 +145,7 @@ impl<'a> CodeGen<'a> {
             match &node {
                 &NodeKind::LetFuncDef(ref funcdef, ref expr) => funcs.push(node.clone()),
                 _ => {
-                    try!(self.gen_which(&node));
+                    try!(self.gen_expr(&node));
                     ()
                 }
             }
@@ -165,19 +167,49 @@ impl<'a> CodeGen<'a> {
         Ok(ptr::null_mut())
     }
 
-    unsafe fn gen_which(&mut self, node: &NodeKind) -> CodeGenResult<LLVMValueRef> {
+    unsafe fn gen_expr(&mut self, node: &NodeKind) -> CodeGenResult<LLVMValueRef> {
         match node {
             // LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
             // LetFuncExpr(FuncDef, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
             // LetDef((String, typing::Type), Box<NodeKind>), // name, bound expr
             // LetFuncDef(FuncDef, Box<NodeKind>), // name, bound expr
+            &NodeKind::LetDef((ref name, ref ty), ref expr) => self.gen_letdef(name, ty, &*expr),
             &NodeKind::LetFuncDef(ref funcdef, ref expr) => self.gen_letfuncdef(&*funcdef, &*expr),
             // Call(Box<NodeKind>, Vec<NodeKind>),
             &NodeKind::Call(ref callee, ref args) => self.gen_call(&*callee, &*args),
+
+            &NodeKind::Ident(ref name) => self.gen_var_load(name),
             &NodeKind::Int(ref i) => self.gen_int(*i),
-            &NodeKind::Unit => Ok(ptr::null_mut()),
+            &NodeKind::Unit => self.gen_int(0), // tmp
             _ => panic!("not implemented"),
         }
+    }
+
+    pub unsafe fn gen_letdef(
+        &mut self,
+        name: &String,
+        ty: &Type,
+        expr: &NodeKind,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let llvm_ty = ty.to_llvmty();
+        let llvm_val = LLVMAddGlobal(
+            self.module,
+            llvm_ty,
+            CString::new(name.as_str()).unwrap().as_ptr(),
+        );
+        LLVMSetInitializer(llvm_val, LLVMConstNull(llvm_ty));
+
+        self.global_varmap.insert(name.clone(), (
+            ty.clone(),
+            llvm_ty,
+            llvm_val,
+        ));
+
+        let llvm_expr = try!(self.gen_expr(expr));
+
+        LLVMBuildStore(self.builder, llvm_expr, llvm_val);
+
+        Ok(llvm_val)
     }
 
     pub unsafe fn gen_letfuncdef(
@@ -213,10 +245,8 @@ impl<'a> CodeGen<'a> {
 
         let mut args_val = Vec::new();
         for arg in args {
-            let a = try!(self.gen_which(&arg));
-            if a != ptr::null_mut() {
-                args_val.push(a);
-            }
+            let llvm_arg = try!(self.gen_expr(&arg));
+            args_val.push(llvm_arg);
         }
 
         if let Some(func) = self.ext_funcmap.get(name) {
@@ -232,6 +262,23 @@ impl<'a> CodeGen<'a> {
         }
     }
 
+    unsafe fn lookup_var(&mut self, name: &String) -> CodeGenResult<LLVMValueRef> {
+        if let Some(&(ref _ty, _llvmty, val)) = self.global_varmap.get(name.as_str()) {
+            Ok(val)
+        } else {
+            panic!(format!("not found variable '{}'", name))
+        }
+    }
+
+    unsafe fn gen_var_load(&mut self, name: &String) -> CodeGenResult<LLVMValueRef> {
+        let val = try!(self.lookup_var(name));
+        Ok(LLVMBuildLoad(
+            self.builder,
+            val,
+            CString::new("load").unwrap().as_ptr(),
+        ))
+    }
+
     pub unsafe fn gen_int(&mut self, i: i32) -> CodeGenResult<LLVMValueRef> {
         Ok(LLVMConstInt(LLVMInt32Type(), i as u64, 0))
     }
@@ -240,7 +287,7 @@ impl<'a> CodeGen<'a> {
 impl Type {
     pub unsafe fn to_llvmty(&self) -> LLVMTypeRef {
         match self {
-            &Type::Unit => LLVMVoidType(),
+            &Type::Unit => LLVMInt32Type(),
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),

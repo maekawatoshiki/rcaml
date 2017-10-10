@@ -41,7 +41,7 @@ fn main() {
         parser::parse_and_infer_type("let f x = x in f 1.3");
 
         // let e = "let f x = x;; f 1;; f 1.3";
-        let e = "print_int 12;; print_newline ()";
+        let e = "let a = 123;; print_int a;; print_newline ()";
         println!(">> {}", e);
         let nodes = parser::parse_module_items(e);
         for (i, node) in nodes.iter().enumerate() {

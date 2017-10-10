@@ -253,6 +253,7 @@ pub fn g(
         }
         NodeKind::LetDef((ref name, ref ty), ref expr) => {
             try!(unify(&try!(g(expr, env, tyenv, idgen)), ty, tyenv));
+            EXTENV.lock().unwrap().insert(name.clone(), ty.clone());
             Ok(Type::Unit)
         }
         NodeKind::LetFuncDef(ref funcdef, ref expr) => {

@@ -145,7 +145,11 @@ named!(expr_unary<NodeKind>,
             op: alt!(tag!("-.") | tag!("-")) >> 
             opt_spaces >> 
             e: expr_unary >> 
-            (NodeKind::UnaryOp(node::str_to_unaryop(str::from_utf8(op).unwrap()), Box::new(e)))
+            ({
+                let (op, is_int) = node::str_to_unaryop(str::from_utf8(op).unwrap());
+                if is_int { NodeKind::IntUnaryOp(op, Box::new(e)) }
+                else { NodeKind::FloatUnaryOp(op, Box::new(e)) }
+            })
         ) | 
         expr_postfix
     )
@@ -405,25 +409,32 @@ pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
         match module_item(code.as_bytes()) {
             IResult::Done(remain, node) => {
                 let uniquified = uniquify(node, &mut idgen);
-                match &uniquified {
-                    &NodeKind::LetDef(_, _) |
-                    &NodeKind::LetFuncDef(_, _) => {
-                        nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen))
-                    }
-                    _ => {
-                        nodes.push(typing::f(
-                            &uniquified,
-                            &mut tyenv.clone(),
-                            &mut idgen.clone(),
-                        ))
-                    }
-                }
+                println!("{:?}", uniquified.clone());
+                nodes.push(typing::infer(&uniquified, &mut idgen).0);
+                // match &uniquified {
+                //     &NodeKind::LetDef(_, _) |
+                //     &NodeKind::LetFuncDef(_, _) => {
+                //         nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen))
+                //     }
+                //     _ => {
+                //         nodes.push(typing::f(
+                //             &uniquified,
+                //             &mut tyenv.clone(),
+                //             &mut idgen.clone(),
+                //         ))
+                //     }
+                // }
                 code = str::from_utf8(remain).unwrap();
             }
             IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}",     needed)),
             IResult::Error(err) => panic!(format!("error: {:?}",          err)),
         }
     }
+
+    for node in &nodes {
+        println!("{:?}", node);
+    }
+
     unsafe {
         let mut codegen = codegen::CodeGen::new(&mut tyenv);
         codegen.gen(nodes.clone());
@@ -441,9 +452,11 @@ pub fn parse_and_infer_type(e: &str) {
     use typing;
     use id;
     let mut idgen = id::IdGen::new();
-    let mut tyenv = HashMap::new();
+    // let mut tyenv = HashMap::new();
     let uniquified = uniquify(node, &mut idgen);
-    println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified,&mut tyenv, &mut idgen));
+    let (n, t) = typing::infer(&uniquified, &mut idgen);
+    // println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified,&mut tyenv, &mut idgen));
+    println!("generated node: {:?}\ntype infered node: {:?}\ninfered ty: {:?}", uniquified, n, t);
 }
 
 

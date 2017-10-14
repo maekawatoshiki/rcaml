@@ -45,31 +45,32 @@ impl fmt::Debug for Type {
 #[derive(Debug)]
 pub enum TypeError {
     Unify(Type, Type),
+    NotFoundVarOrFunc(String),
 }
 
-// TODO: following functions should return Result<>
+pub type TypeResult<T> = Result<T, TypeError>;
 
-pub fn infer_unify(t1: &Type, t2: &Type) {
+pub fn infer_unify(t1: &Type, t2: &Type) -> TypeResult<()> {
     match (t1, t2) {
-        (&Type::Unit, &Type::Unit) => (),
-        (&Type::Bool, &Type::Bool) => (),
-        (&Type::Char, &Type::Char) => (),
-        (&Type::Int, &Type::Int) => (),
-        (&Type::Float, &Type::Float) => (),
+        (&Type::Unit, &Type::Unit) => Ok(()),
+        (&Type::Bool, &Type::Bool) => Ok(()),
+        (&Type::Char, &Type::Char) => Ok(()),
+        (&Type::Int, &Type::Int) => Ok(()),
+        (&Type::Float, &Type::Float) => Ok(()),
         (&Type::Func(ref t1p, ref t1r), &Type::Func(ref t2p, ref t2r)) => {
             if t1p.len() != t2p.len() {
-                panic!()
+                return Err(TypeError::Unify(t1.clone(), t2.clone()));
             }
             for (a, b) in t1p.iter().zip(t2p.iter()) {
-                infer_unify(a, b)
+                try!(infer_unify(a, b))
             }
             infer_unify(t1r, t2r)
         }
-        (&Type::Var(i1), &Type::Var(i2)) if i1 == i2 => (),
-        (&Type::Var(ref i1), _) => {}
+        (&Type::Var(i1), &Type::Var(i2)) if i1 == i2 => Ok(()),
+        (&Type::Var(ref i1), _) => Ok(()),
         (_, &Type::Var(_)) => infer_unify(t2, t1),
         // TODO: implement more types
-        _ => panic!(),
+        _ => Err(TypeError::Unify(t1.clone(), t2.clone())),
     }
 }
 
@@ -77,10 +78,10 @@ fn infer_sub(
     node: &NodeKind,
     env: &HashMap<String, Type>,
     idgen: &mut id::IdGen,
-) -> (NodeKind, Type) {
+) -> TypeResult<(NodeKind, Type)> {
     macro_rules! infer_seq { ($es:expr) => ({
             let mut tys = Vec::new();
-            for e in $es.iter() { tys.push(infer_sub(e, env, idgen).1); }
+            for e in $es.iter() { tys.push(try!(infer_sub(e, env, idgen)).1); }
             tys 
         });
     }
@@ -90,21 +91,21 @@ fn infer_sub(
     }
 
     match *node {
-        NodeKind::Unit => (node.clone(), Type::Unit),
-        NodeKind::Bool(_) => (node.clone(), Type::Bool),
-        NodeKind::Int(_) => (node.clone(), Type::Int),
-        NodeKind::Float(_) => (node.clone(), Type::Float),
+        NodeKind::Unit => Ok((node.clone(), Type::Unit)),
+        NodeKind::Bool(_) => Ok((node.clone(), Type::Bool)),
+        NodeKind::Int(_) => Ok((node.clone(), Type::Int)),
+        NodeKind::Float(_) => Ok((node.clone(), Type::Float)),
         NodeKind::Ident(ref name) => {
             if let Some(t) = env.get(name.as_str()).cloned() {
-                (NodeKind::Ident(name.clone()), t)
+                Ok((NodeKind::Ident(name.clone()), t))
             } else if let Some(t) = EXTENV.lock().unwrap().get(name.as_str()).cloned() {
-                (NodeKind::Ident(name.clone()), t)
+                Ok((NodeKind::Ident(name.clone()), t))
             } else {
-                panic!("not found");
+                Err(TypeError::NotFoundVarOrFunc(name.clone()))
             }
         }
         NodeKind::Call(ref callee, ref args) => {
-            let (_, functy) = infer_sub(callee, env, idgen);
+            let (_, functy) = try!(infer_sub(callee, env, idgen));
             let (ty, params_tys) = if let Type::Func(params_tys, ty) = functy {
                 (ty, params_tys)
             } else {
@@ -120,35 +121,35 @@ fn infer_sub(
             } else {
                 *ty
             };
-            (node.clone(), infered_ty)
+            Ok((node.clone(), infered_ty))
         }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
             let mut newenv = env.clone();
-            let infered_expr = infer_sub(expr, env, idgen);
+            let infered_expr = try!(infer_sub(expr, env, idgen));
             newenv.insert(name.clone(), infered_expr.1.clone());
-            let infered_body = infer_sub(body, &newenv, idgen);
-            (
+            let infered_body = try!(infer_sub(body, &newenv, idgen));
+            Ok((
                 NodeKind::LetExpr(
                     (name.clone(), infered_expr.1),
                     Box::new(infered_expr.0.clone()),
                     Box::new(infered_body.0.clone()),
                 ),
                 infered_body.1,
-            )
+            ))
         }
         NodeKind::LetDef((ref name, ref ty), ref expr) => {
-            let infered_expr = infer_sub(expr, env, idgen);
+            let infered_expr = try!(infer_sub(expr, env, idgen));
             EXTENV.lock().unwrap().insert(
                 name.clone(),
                 infered_expr.1.clone(),
             );
-            (
+            Ok((
                 NodeKind::LetDef(
                     (name.clone(), infered_expr.1),
                     Box::new(infered_expr.0.clone()),
                 ),
                 Type::Unit,
-            )
+            ))
         }
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
             let mut newenv = env.clone();
@@ -161,7 +162,7 @@ fn infer_sub(
                 funcdef.name.0.clone(),
                 Type::Func(params_tys, Box::new(idgen.get_type())),
             );
-            let infered_expr = infer_sub(expr, &newenv, idgen);
+            let infered_expr = try!(infer_sub(expr, &newenv, idgen));
 
             let mut newenv_body = env.clone();
             newenv_body.insert(
@@ -171,8 +172,8 @@ fn infer_sub(
                     Box::new(infered_expr.1.clone()),
                 ),
             );
-            let infered_body = infer_sub(body, &newenv_body, idgen);
-            (
+            let infered_body = try!(infer_sub(body, &newenv_body, idgen));
+            Ok((
                 NodeKind::LetFuncExpr(
                     FuncDef {
                         name: (funcdef.name.0.clone(), infered_expr.1.clone()),
@@ -182,7 +183,7 @@ fn infer_sub(
                     Box::new(infered_body.0.clone()),
                 ),
                 infered_body.1,
-            )
+            ))
         }
         NodeKind::LetFuncDef(ref funcdef, ref expr) => {
             let mut newenv = env.clone();
@@ -195,12 +196,12 @@ fn infer_sub(
                 funcdef.name.0.clone(),
                 Type::Func(params_tys.clone(), Box::new(idgen.get_type())),
             );
-            let infered_expr = infer_sub(expr, &newenv, idgen);
+            let infered_expr = try!(infer_sub(expr, &newenv, idgen));
             EXTENV.lock().unwrap().insert(
                 funcdef.name.0.clone(),
                 Type::Func(params_tys, Box::new(infered_expr.1.clone())),
             );
-            (
+            Ok((
                 NodeKind::LetFuncDef(
                     FuncDef {
                         name: (funcdef.name.0.clone(), infered_expr.1.clone()),
@@ -209,58 +210,58 @@ fn infer_sub(
                     Box::new(infered_expr.0.clone()),
                 ),
                 Type::Unit,
-            )
+            ))
         }
         NodeKind::IntUnaryOp(ref op, ref expr) => {
-            let infered_expr = infer_sub(expr, env, idgen);
-            infer_unify(&infered_expr.1, &Type::Int);
+            let infered_expr = try!(infer_sub(expr, env, idgen));
+            try!(infer_unify(&infered_expr.1, &Type::Int));
             // assert
-            (
+            Ok((
                 NodeKind::IntUnaryOp(op.clone(), Box::new(infered_expr.0)),
                 infered_expr.1,
-            )
+            ))
         }
         NodeKind::FloatUnaryOp(ref op, ref expr) => {
-            let infered_expr = infer_sub(expr, env, idgen);
-            infer_unify(&infered_expr.1, &Type::Float);
+            let infered_expr = try!(infer_sub(expr, env, idgen));
+            try!(infer_unify(&infered_expr.1, &Type::Float));
             // assert
-            (
+            Ok((
                 NodeKind::FloatUnaryOp(op.clone(), Box::new(infered_expr.0)),
                 infered_expr.1,
-            )
+            ))
         }
         NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => {
-            let infered_lhs = infer_sub(lhs, env, idgen);
-            let infered_rhs = infer_sub(rhs, env, idgen);
-            infer_unify(&infered_lhs.1, &Type::Int);
-            infer_unify(&infered_rhs.1, &Type::Int);
-            (
+            let infered_lhs = try!(infer_sub(lhs, env, idgen));
+            let infered_rhs = try!(infer_sub(rhs, env, idgen));
+            try!(infer_unify(&infered_lhs.1, &Type::Int));
+            try!(infer_unify(&infered_rhs.1, &Type::Int));
+            Ok((
                 NodeKind::IntBinaryOp(
                     op.clone(),
                     Box::new(infered_lhs.0.clone()),
                     Box::new(infered_rhs.0.clone()),
                 ),
                 Type::Int,
-            )
+            ))
         }
         NodeKind::FloatBinaryOp(ref op, ref lhs, ref rhs) => {
-            let infered_lhs = infer_sub(lhs, env, idgen);
-            let infered_rhs = infer_sub(rhs, env, idgen);
-            infer_unify(&infered_lhs.1, &Type::Float);
-            infer_unify(&infered_rhs.1, &Type::Float);
-            (
+            let infered_lhs = try!(infer_sub(lhs, env, idgen));
+            let infered_rhs = try!(infer_sub(rhs, env, idgen));
+            try!(infer_unify(&infered_lhs.1, &Type::Float));
+            try!(infer_unify(&infered_rhs.1, &Type::Float));
+            Ok((
                 NodeKind::FloatBinaryOp(
                     op.clone(),
                     Box::new(infered_lhs.0.clone()),
                     Box::new(infered_rhs.0.clone()),
                 ),
                 Type::Float,
-            )
+            ))
         }
         _ => panic!(),
     }
 }
 
-pub fn infer(node: &NodeKind, idgen: &mut id::IdGen) -> (NodeKind, Type) {
+pub fn infer(node: &NodeKind, idgen: &mut id::IdGen) -> TypeResult<(NodeKind, Type)> {
     infer_sub(node, &HashMap::new(), idgen)
 }

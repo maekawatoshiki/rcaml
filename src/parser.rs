@@ -410,7 +410,10 @@ pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
             IResult::Done(remain, node) => {
                 let uniquified = uniquify(node, &mut idgen);
                 println!("{:?}", uniquified.clone());
-                nodes.push(typing::infer(&uniquified, &mut idgen).0);
+                nodes.push(match typing::infer(&uniquified, &mut idgen) {
+                    Ok(node) => node.0,
+                    Err(err) => panic!(format!("{:?}", err)),
+                });
                 // match &uniquified {
                 //     &NodeKind::LetDef(_, _) |
                 //     &NodeKind::LetFuncDef(_, _) => {
@@ -454,7 +457,7 @@ pub fn parse_and_infer_type(e: &str) {
     let mut idgen = id::IdGen::new();
     // let mut tyenv = HashMap::new();
     let uniquified = uniquify(node, &mut idgen);
-    let (n, t) = typing::infer(&uniquified, &mut idgen);
+    let (n, t) = typing::infer(&uniquified, &mut idgen).unwrap();
     // println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified,&mut tyenv, &mut idgen));
     println!("generated node: {:?}\ntype infered node: {:?}\ninfered ty: {:?}", uniquified, n, t);
 }

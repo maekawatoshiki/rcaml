@@ -45,7 +45,7 @@ fn main() {
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";
         println!("--- following code doesn't run now ---");
-        let e = "let f x = x in let a = f 1 in let b = f 2.2 in print_int 1;;";
+        let e = "let a = 2;; print_int a;; print_newline ()";
         // let e = "let a = 123;; print_int a;; print_newline ()";
         println!(">> {}", e);
         let nodes = parser::parse_module_items(e);

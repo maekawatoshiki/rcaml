@@ -14,7 +14,8 @@ pub enum NodeKind {
     LetFuncExpr(FuncDef, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
     LetDef((String, typing::Type), Box<NodeKind>), // name, bound expr
     LetFuncDef(FuncDef, Box<NodeKind>), // name, bound expr
-    UnaryOp(UnaryOps, Box<NodeKind>),
+    IntUnaryOp(UnaryOps, Box<NodeKind>),
+    FloatUnaryOp(UnaryOps, Box<NodeKind>),
     IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
     FloatBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
     IfExpr(Box<NodeKind>, Box<NodeKind>, Box<NodeKind>), // cond, then, else
@@ -69,10 +70,10 @@ pub enum UnaryOps {
     FNeg,
 }
 
-pub fn str_to_unaryop(opstr: &str) -> UnaryOps {
+pub fn str_to_unaryop(opstr: &str) -> (UnaryOps, bool) {
     match opstr {
-        "-" => UnaryOps::INeg,
-        "-." => UnaryOps::FNeg,
+        "-" => (UnaryOps::INeg, true),
+        "-." => (UnaryOps::FNeg, false),
         _ => panic!(),
     }
 }

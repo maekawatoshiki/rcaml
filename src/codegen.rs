@@ -10,7 +10,7 @@ use std::ptr;
 use std::boxed::Box;
 use std::collections::{HashMap, hash_map, VecDeque};
 
-use node::{NodeKind, FuncDef};
+use node::{NodeKind, FuncDef, BinOps};
 use node;
 
 use typing::Type;
@@ -178,6 +178,10 @@ impl<'a> CodeGen<'a> {
             // Call(Box<NodeKind>, Vec<NodeKind>),
             &NodeKind::Call(ref callee, ref args) => self.gen_call(&*callee, &*args),
 
+            // IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
+            // &NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => {
+            //     self.gen_int_binop(op, &*lhs, &*rhs)
+            // }
             &NodeKind::Ident(ref name) => self.gen_var_load(name),
             &NodeKind::Int(ref i) => self.gen_int(*i),
             &NodeKind::Unit => self.gen_int(0), // tmp
@@ -261,6 +265,8 @@ impl<'a> CodeGen<'a> {
             Ok(ptr::null_mut())
         }
     }
+
+    // unsafe fn gen_int_binop
 
     unsafe fn lookup_var(&mut self, name: &String) -> CodeGenResult<LLVMValueRef> {
         if let Some(&(ref _ty, _llvmty, val)) = self.global_varmap.get(name.as_str()) {

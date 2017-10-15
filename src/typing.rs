@@ -245,7 +245,7 @@ pub fn g(
         NodeKind::Call(ref callee, ref args) => {
             let ty = idgen.get_type();
             let callee_ty = try!(g(callee, env, tyenv, idgen));
-            // TODO: ???
+            // TODO: ??? REFINE
             if let Type::Func(params, ret, true) = callee_ty {
                 if let Some(ty_n) = var_n(&*ret) {
                     let args_tys = g_seq!(args);
@@ -259,7 +259,7 @@ pub fn g(
                         panic!()
                     }
                 } else {
-                    Ok(ty)
+                    Ok(*ret)
                 }
             } else {
                 let functy = Type::Func(g_seq!(args), Box::new(ty.clone()), false);
@@ -282,18 +282,19 @@ pub fn g(
             for &(ref x, ref t) in params.iter() {
                 newenv_body.insert(x.to_string(), t.clone());
             }
-            let b = try!(g(expr, &newenv_body, tyenv, idgen));
-            let a = Type::Func(
-                params
-                    .iter()
-                    .map(|p| deref_ty(&p.1.clone(), tyenv))
-                    .collect::<Vec<_>>(),
-                Box::new(b),
-                true,
+            let newfuncty = deref_ty(
+                &Type::Func(
+                    params
+                        .iter()
+                        .map(|p| deref_ty(&p.1.clone(), tyenv))
+                        .collect::<Vec<_>>(),
+                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+                    true,
+                ),
+                tyenv,
             );
-            tyenv.insert(var_n(&ty).unwrap(), a.clone());
-            newenv.insert(name.clone(), a.clone());
-            try!(unify(&ty, &a, tyenv));
+            tyenv.insert(var_n(&ty).unwrap(), newfuncty.clone());
+            newenv.insert(name.clone(), newfuncty.clone());
 
             g(body, &newenv, tyenv, idgen)
         }

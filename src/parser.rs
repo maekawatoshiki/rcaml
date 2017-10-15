@@ -546,8 +546,4 @@ pub fn test_parse_module_item() {
                               Box::new(IntBinaryOp(IMul, 
                                                    Box::new(Ident("x".to_string())), 
                                                    Box::new(Int(2))))));
-    // assert_eq!(f("5.3 *. 10.2"),
-    //            FloatBinaryOp(FMul,
-    //                     Box::new(Float(5.3)),
-    //                     Box::new(Float(10.2))))
 }

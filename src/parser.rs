@@ -78,6 +78,7 @@ named!(expr_let<NodeKind>,
 named!(expr<NodeKind>, 
     alt!(
             expr_let
+        |   expr_if
         |   expr_add_sub
     )
 );
@@ -175,6 +176,23 @@ named!(expr_prim<NodeKind>,
           constant 
         | parens
         | unit
+    )
+);
+
+named!(expr_if<NodeKind>,
+    do_parse!(
+        tag!("if") >>
+        spaces >> 
+        e1: expr >>
+        spaces >> 
+        tag!("then") >>
+        spaces >> 
+        e2: expr >>
+        spaces >> 
+        tag!("else") >>
+        spaces >> 
+        e3: expr >>
+        (NodeKind::IfExpr(Box::new(e1), Box::new(e2), Box::new(e3)))
     )
 );
 
@@ -364,6 +382,13 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             uniquify_seq(&mut e2s, idgen);
             NodeKind::Call(e1, e2s)
         }
+        NodeKind::IfExpr(c, t, e) => {
+            NodeKind::IfExpr(
+                Box::new(uniquify(*c, idgen)),
+                Box::new(uniquify(*t, idgen)),
+                Box::new(uniquify(*e, idgen)),
+            )
+        }
         x => x, // No Syntax inside
     }
 }
@@ -454,13 +479,13 @@ lazy_static! {
         let mut extenv = HashMap::new();
         extenv.insert("print_int".to_string(), 
                       Type::Func(vec![Type::Int], 
-                      Box::new(Type::Unit)));
+                      Box::new(Type::Unit), true));
         extenv.insert("print_float".to_string(), 
                       Type::Func(vec![Type::Float], 
-                      Box::new(Type::Unit)));
+                      Box::new(Type::Unit), true));
         extenv.insert("print_newline".to_string(), 
                       Type::Func(vec![Type::Unit], 
-                      Box::new(Type::Unit)));
+                      Box::new(Type::Unit), true));
         Mutex::new(extenv)
     };
 }

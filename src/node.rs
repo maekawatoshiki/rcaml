@@ -17,6 +17,7 @@ pub enum NodeKind {
     UnaryOp(UnaryOps, Box<NodeKind>),
     IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
     FloatBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
+    IfExpr(Box<NodeKind>, Box<NodeKind>, Box<NodeKind>), // cond, then, else
 }
 
 #[derive(Debug, Clone, PartialEq)]

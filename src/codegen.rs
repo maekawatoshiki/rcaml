@@ -91,7 +91,7 @@ impl<'a> CodeGen<'a> {
             ext_funcmap.insert(
                 "print_int".to_string(),
                 ExtFunc {
-                    ty: Type::Func(vec![Type::Int], Box::new(Type::Unit)),
+                    ty: Type::Func(vec![Type::Int], Box::new(Type::Unit), true),
                     llvm_val: f_print_int,
                 },
             );
@@ -111,7 +111,7 @@ impl<'a> CodeGen<'a> {
             ext_funcmap.insert(
                 "print_newline".to_string(),
                 ExtFunc {
-                    ty: Type::Func(vec![Type::Unit], Box::new(Type::Unit)),
+                    ty: Type::Func(vec![Type::Unit], Box::new(Type::Unit), true),
                     llvm_val: f_print_newline,
                 },
             );
@@ -234,7 +234,7 @@ impl<'a> CodeGen<'a> {
 
         let (func_param_tys, func_ret_ty) =
             if let Some(func_ty) = EXTENV.lock().unwrap().get(name).cloned() {
-                if let Type::Func(param_tys, ret_ty) = func_ty {
+                if let Type::Func(param_tys, ret_ty, _) = func_ty {
                     (param_tys, ret_ty)
                 } else {
                     panic!("not func");

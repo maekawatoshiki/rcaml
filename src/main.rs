@@ -38,7 +38,12 @@ fn main() {
         parser::parse_and_show_module_item("let f x = x * 2;;");
 
         parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
-        parser::parse_and_infer_type("let f x = x in f 1.3");
+        parser::parse_and_infer_type("let f x = if x then 1 else let a = f (x - 1) in a in f 5");
+        parser::parse_and_infer_type("let f x = x in let a = f 2.3 in let b = f 1 in a");
+        parser::parse_and_infer_type(
+            "let f x = if x then 1 else let a = f (x - 1) in a + 1 in let b = f 1 in b",
+        );
+        parser::parse_and_infer_type("let f x = if x + 1 then f x else f x in 1");
 
         // let e = "let f x = x;; f 1;; f 1.3";
         let e = "let a = 123;; print_int a;; print_newline ()";

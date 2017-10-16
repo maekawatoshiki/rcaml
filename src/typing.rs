@@ -314,15 +314,15 @@ pub fn g(
             for &(ref x, ref t) in params.iter() {
                 newenv_body.insert(x.to_string(), t.clone());
             }
-            try!(unify(
-                &ty,
-                &Type::Func(
-                    params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
-                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
-                ),
-                tyenv,
-            ));
-            EXTENV.lock().unwrap().insert(name.clone(), ty.clone());
+            let newty = Type::Func(
+                params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
+                Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+            );
+            try!(unify(&ty, &newty, tyenv));
+            EXTENV.lock().unwrap().insert(
+                name.clone(),
+                update(newty, idgen),
+            );
             Ok(Type::Unit)
         }
         NodeKind::IfExpr(ref cond, ref then_, ref else_) => {

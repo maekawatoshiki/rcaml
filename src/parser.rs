@@ -435,23 +435,11 @@ pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
             IResult::Done(remain, node) => {
                 let uniquified = uniquify(node, &mut idgen);
                 println!("{:?}", uniquified.clone());
-                match &uniquified {
-                    &NodeKind::LetDef(_, _) |
-                    &NodeKind::LetFuncDef(_, _) => {
-                        nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen))
-                    }
-                    _ => {
-                        nodes.push(typing::f(
-                            &uniquified,
-                            &mut tyenv.clone(),
-                            &mut idgen.clone(),
-                        ))
-                    }
-                }
+                nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen));
                 code = str::from_utf8(remain).unwrap();
             }
-            IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}",     needed)),
-            IResult::Error(err) => panic!(format!("error: {:?}",          err)),
+            IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}", needed)),
+            IResult::Error(err) => panic!(format!("error: {:?}", err)),
         }
     }
 

@@ -43,7 +43,7 @@ fn main() {
         parser::parse_and_infer_type(
             "let f x = if x then 1 else let a = f (x - 1) in a + 1 in let b = f 1 in b",
         );
-        parser::parse_and_infer_type("let f x = if x + 1 then f x else f x in 1");
+        parser::parse_and_infer_type("let f x = if x + 1 then 1+(f x) else f x in 1");
 
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";

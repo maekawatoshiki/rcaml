@@ -489,13 +489,13 @@ lazy_static! {
         let mut extenv = HashMap::new();
         extenv.insert("print_int".to_string(), 
                       Type::Func(vec![Type::Int], 
-                      Box::new(Type::Unit), true));
+                      Box::new(Type::Unit)));
         extenv.insert("print_float".to_string(), 
                       Type::Func(vec![Type::Float], 
-                      Box::new(Type::Unit), true));
+                      Box::new(Type::Unit)));
         extenv.insert("print_newline".to_string(), 
                       Type::Func(vec![Type::Unit], 
-                      Box::new(Type::Unit), true));
+                      Box::new(Type::Unit)));
         Mutex::new(extenv)
     };
 }

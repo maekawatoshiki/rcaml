@@ -1,5 +1,5 @@
 use std::boxed::Box;
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map};
 
 use node::{NodeKind, FuncDef};
 use id;
@@ -13,7 +13,7 @@ pub enum Type {
     Int,
     Float,
     Char,
-    Func(Vec<Type>, Box<Type>, bool), // (param types, return type, is type inference complete?)
+    Func(Vec<Type>, Box<Type>), // (param types, return type, is type inference complete?)
     Var(usize), // id
 }
 
@@ -25,7 +25,7 @@ impl Type {
             &Type::Char => "char".to_string(),
             &Type::Int => "int".to_string(),
             &Type::Float => "float".to_string(),
-            &Type::Func(ref param_tys, ref ret_ty, _) => {
+            &Type::Func(ref param_tys, ref ret_ty) => {
                 param_tys.into_iter().fold("".to_string(), |acc, ts| {
                     acc + ts.to_string().as_str() + " -> "
                 }) + ret_ty.to_string().as_str() + " = <fun>"
@@ -53,9 +53,7 @@ fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
                                   .collect::<Vec<_>>());
     }
     match *ty {
-        Type::Func(ref p, ref r, ref q) => {
-            Type::Func(deref_typ_list!(p), Box::new(deref_ty(r, tyenv)), *q)
-        }
+        Type::Func(ref p, ref r) => Type::Func(deref_typ_list!(p), Box::new(deref_ty(r, tyenv))),
         // Type::Tuple(ref ts) => Type::Tuple(deref_ty_list!(ts)),
         // Type::Array(ref t) => Type::Array(Box::new(deref_ty(t, tyenv))),
         Type::Var(ref n) => {
@@ -150,7 +148,7 @@ fn occur(r1: usize, ty: &Type) -> bool {
         ($ls:expr) => ($ls.iter().any(|ty| occur(r1, ty)))
     }
     match *ty {
-        Type::Func(ref t2s, ref t2, _) => occur_list!(t2s) || occur(r1, t2),
+        Type::Func(ref t2s, ref t2) => occur_list!(t2s) || occur(r1, t2),
         // Type::Tuple(ref t2s) => occur_list!(t2s),
         // Type::Array(ref t2) => occur(r1, t2),
         Type::Var(r2) => r1 == r2,
@@ -167,7 +165,7 @@ pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(
             (&Type::Char, &Type::Char) => Ok(()),
             (&Type::Int, &Type::Int) => Ok(()),
             (&Type::Float, &Type::Float) => Ok(()),
-            (&Type::Func(ref t1p, ref t1r, _), &Type::Func(ref t2p, ref t2r, _)) => {
+            (&Type::Func(ref t1p, ref t1r), &Type::Func(ref t2p, ref t2r)) => {
                 if t1p.len() != t2p.len() {
                     return Err(TypeError::Unify(t1.clone(), t2.clone()));
                 }
@@ -195,6 +193,42 @@ pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(
     }
 }
 
+fn update(ty: Type, idgen: &mut id::IdGen) -> Type {
+    match ty {
+        Type::Func(params, ret) => {
+            let mut newparams: Vec<Type> = Vec::new();
+            let mut tyenv = HashMap::new();
+            for p in params {
+                newparams.push(if let Some(n) = var_n(&p) {
+                    match tyenv.entry(n) {
+                        hash_map::Entry::Occupied(o) => o.into_mut(),
+                        hash_map::Entry::Vacant(v) => v.insert(idgen.get_type()),
+                    }.clone()
+                } else {
+                    p
+                })
+            }
+            let newret = if let Some(n) = var_n(&ret) {
+                match tyenv.entry(n) {
+                    hash_map::Entry::Occupied(o) => o.into_mut(),
+                    hash_map::Entry::Vacant(v) => v.insert(idgen.get_type()),
+                }.clone()
+            } else {
+                *ret
+            };
+            Type::Func(newparams, Box::new(newret))
+        }
+        _ => ty,
+    }
+}
+
+fn var_n(ty: &Type) -> Option<usize> {
+    if let &Type::Var(n) = ty {
+        Some(n)
+    } else {
+        None
+    }
+}
 
 pub fn g(
     node: &NodeKind,
@@ -202,13 +236,6 @@ pub fn g(
     tyenv: &mut HashMap<usize, Type>,
     idgen: &mut id::IdGen,
 ) -> Result<Type, TypeError> {
-    fn var_n(ty: &Type) -> Option<usize> {
-        if let &Type::Var(n) = ty {
-            Some(n)
-        } else {
-            None
-        }
-    }
     macro_rules! g_seq {
         ($es:expr) => ({
             let mut argtys = Vec::new();
@@ -224,7 +251,7 @@ pub fn g(
         NodeKind::Float(_) => Ok(Type::Float),
         NodeKind::Ident(ref name) => {
             if let Some(t) = env.get(name).cloned() {
-                Ok(t)
+                Ok(update(t, idgen))
             } else if let Some(t) = EXTENV.lock().unwrap().get(name).cloned() {
                 Ok(t)
             } else {
@@ -245,27 +272,9 @@ pub fn g(
         NodeKind::Call(ref callee, ref args) => {
             let ty = idgen.get_type();
             let callee_ty = try!(g(callee, env, tyenv, idgen));
-            // TODO: ??? REFINE
-            if let Type::Func(params, ret, true) = callee_ty {
-                if let Some(ty_n) = var_n(&*ret) {
-                    let args_tys = g_seq!(args);
-                    let mut tyenv = HashMap::new();
-                    for (param_ty, arg_ty) in params.iter().zip(args_tys.iter()) {
-                        tyenv.insert(var_n(param_ty).unwrap(), arg_ty.clone());
-                    }
-                    if let Some(t) = tyenv.get(&ty_n).cloned() {
-                        Ok(t)
-                    } else {
-                        panic!()
-                    }
-                } else {
-                    Ok(*ret)
-                }
-            } else {
-                let functy = Type::Func(g_seq!(args), Box::new(ty.clone()), false);
-                try!(unify(&callee_ty, &functy, tyenv));
-                Ok(ty)
-            }
+            let functy = Type::Func(g_seq!(args), Box::new(ty.clone()));
+            try!(unify(&callee_ty, &functy, tyenv));
+            Ok(ty)
         }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
             try!(unify(&try!(g(expr, env, tyenv, idgen)), ty, tyenv));
@@ -282,19 +291,12 @@ pub fn g(
             for &(ref x, ref t) in params.iter() {
                 newenv_body.insert(x.to_string(), t.clone());
             }
-            let newfuncty = deref_ty(
-                &Type::Func(
-                    params
-                        .iter()
-                        .map(|p| deref_ty(&p.1.clone(), tyenv))
-                        .collect::<Vec<_>>(),
-                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
-                    true,
-                ),
-                tyenv,
+            let newty = Type::Func(
+                params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
+                Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
             );
-            tyenv.insert(var_n(&ty).unwrap(), newfuncty.clone());
-            newenv.insert(name.clone(), newfuncty.clone());
+            try!(unify(&ty, &newty, tyenv));
+            newenv.insert(name.clone(), update(newty, idgen));
 
             g(body, &newenv, tyenv, idgen)
         }
@@ -317,7 +319,6 @@ pub fn g(
                 &Type::Func(
                     params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
                     Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
-                    true,
                 ),
                 tyenv,
             ));

@@ -277,9 +277,10 @@ pub fn g(
             Ok(ty)
         }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
-            try!(unify(&try!(g(expr, env, tyenv, idgen)), ty, tyenv));
+            let t = try!(g(expr, env, tyenv, idgen));
+            try!(unify(&t, ty, tyenv));
             let mut newenv = env.clone();
-            newenv.insert(name.clone(), ty.clone());
+            newenv.insert(name.clone(), update(t, idgen));
             g(body, &newenv, tyenv, idgen)
         }
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {

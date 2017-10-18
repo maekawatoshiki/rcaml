@@ -454,8 +454,11 @@ pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
     nodes
 }
 
+extern crate ansi_term;
+use self::ansi_term::{Colour, Style};
+
 pub fn parse_and_infer_type(e: &str) {
-    println!("expr: {}", e);
+    println!("{}", Style::new().underline().bold().paint(format!("expression:\t{}",e)));
     let node = match module_item(e.as_bytes()) {
         IResult::Done(_, node) => node,
         _ => panic!(),
@@ -466,7 +469,8 @@ pub fn parse_and_infer_type(e: &str) {
     let mut idgen = id::IdGen::new();
     let mut tyenv = HashMap::new();
     let uniquified = uniquify(node, &mut idgen);
-    println!("generated node: {:?}\ntype infered node: {:?}", uniquified, typing::f(&uniquified, &mut tyenv, &mut idgen));
+    println!("{}", Colour::Yellow.bold().paint(format!("generated:\t{:?}", uniquified)));
+    println!("{}", Colour::Green.bold().paint(format!("infered:\t{:?}", typing::f(&uniquified, &mut tyenv, &mut idgen))));
 }
 
 

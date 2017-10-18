@@ -46,6 +46,27 @@ impl fmt::Debug for Type {
 pub enum TypeError {
     Unify(Type, Type),
 }
+fn deref_ty1(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
+    macro_rules! deref_typ_list {
+        ($list:expr) => ($list.iter().map(|x| deref_ty1(x, tyenv))
+                                  .collect::<Vec<_>>());
+    }
+    match *ty {
+        Type::Func(ref p, ref r) => Type::Func(deref_typ_list!(p), Box::new(deref_ty1(r, tyenv))),
+        // Type::Tuple(ref ts) => Type::Tuple(deref_ty_list!(ts)),
+        // Type::Array(ref t) => Type::Array(Box::new(deref_ty(t, tyenv))),
+        Type::Var(ref n) => {
+            if let Some(t) = tyenv.get(n) {
+                // deref_ty1(t, tyenv)
+                t.clone()
+            } else {
+                Type::Var(*n)
+                // panic!("uninstantiated variable is not allowed now")
+            }
+        }
+        _ => ty.clone(),
+    }
+}
 
 fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
     macro_rules! deref_typ_list {
@@ -193,7 +214,7 @@ pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(
     }
 }
 
-fn update(ty: Type, idgen: &mut id::IdGen) -> Type {
+fn update(ty: Type, tyenv1: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> Type {
     match ty {
         Type::Func(params, ret) => {
             let mut newparams: Vec<Type> = Vec::new();
@@ -251,7 +272,7 @@ pub fn g(
         NodeKind::Float(_) => Ok(Type::Float),
         NodeKind::Ident(ref name) => {
             if let Some(t) = env.get(name).cloned() {
-                Ok(update(t, idgen))
+                Ok(update(t, tyenv, idgen))
             } else if let Some(t) = EXTENV.lock().unwrap().get(name).cloned() {
                 Ok(t)
             } else {
@@ -280,7 +301,7 @@ pub fn g(
             let t = try!(g(expr, env, tyenv, idgen));
             try!(unify(&t, ty, tyenv));
             let mut newenv = env.clone();
-            newenv.insert(name.clone(), update(t, idgen));
+            newenv.insert(name.clone(), update(t, tyenv, idgen));
             g(body, &newenv, tyenv, idgen)
         }
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
@@ -292,13 +313,15 @@ pub fn g(
             for &(ref x, ref t) in params.iter() {
                 newenv_body.insert(x.to_string(), t.clone());
             }
-            let newty = Type::Func(
-                params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
-                Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+            let newty = deref_ty(
+                &Type::Func(
+                    params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
+                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+                ),
+                tyenv,
             );
             try!(unify(&ty, &newty, tyenv));
-            newenv.insert(name.clone(), update(newty, idgen));
-
+            newenv.insert(name.clone(), update(newty, tyenv, idgen));
             g(body, &newenv, tyenv, idgen)
         }
         NodeKind::LetDef((ref name, ref ty), ref expr) => {
@@ -315,14 +338,17 @@ pub fn g(
             for &(ref x, ref t) in params.iter() {
                 newenv_body.insert(x.to_string(), t.clone());
             }
-            let newty = Type::Func(
-                params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
-                Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+            let newty = deref_ty(
+                &Type::Func(
+                    params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
+                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
+                ),
+                tyenv,
             );
             try!(unify(&ty, &newty, tyenv));
             EXTENV.lock().unwrap().insert(
                 name.clone(),
-                update(newty, idgen),
+                update(newty, tyenv, idgen),
             );
             Ok(Type::Unit)
         }

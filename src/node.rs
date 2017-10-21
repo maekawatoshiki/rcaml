@@ -17,6 +17,7 @@ pub enum NodeKind {
     IntUnaryOp(UnaryOps, Box<NodeKind>),
     FloatUnaryOp(UnaryOps, Box<NodeKind>),
     IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
+    CompBinaryOp(CompBinOps, Box<NodeKind>, Box<NodeKind>),
     FloatBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
     IfExpr(Box<NodeKind>, Box<NodeKind>, Box<NodeKind>), // cond, then, else
 }
@@ -61,6 +62,32 @@ pub fn str_to_binop(opstr: &str) -> (BinOps, bool) {
         "/" => (BinOps::IDiv, true),
         "/." => (BinOps::FDiv, false),
         _ => (BinOps::IAdd, true),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CompBinOps {
+    SEq,
+    SNe,
+    PEq,
+    PNe,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+}
+
+pub fn str_to_comp_binop(opstr: &str) -> CompBinOps {
+    match opstr {
+        "=" => CompBinOps::SEq,
+        "<>" => CompBinOps::SNe,
+        "==" => CompBinOps::PEq,
+        "!=" => CompBinOps::PNe,
+        "<" => CompBinOps::Lt,
+        ">" => CompBinOps::Gt,
+        "<=" => CompBinOps::Le,
+        ">=" => CompBinOps::Ge,
+        _ => CompBinOps::SEq,
     }
 }
 

@@ -1,5 +1,5 @@
 use std::boxed::Box;
-use std::collections::{HashMap, hash_map};
+use std::collections::{HashMap, hash_map, HashSet};
 
 use node::{NodeKind, FuncDef};
 use id;
@@ -15,6 +15,7 @@ pub enum Type {
     Char,
     Func(Vec<Type>, Box<Type>), // (param types, return type, is type inference complete?)
     Var(usize), // id
+    Schema(Vec<Type>, Box<Type>),
 }
 
 impl Type {
@@ -31,6 +32,14 @@ impl Type {
                 }) + ret_ty.to_string().as_str() + " = <fun>"
             }
             &Type::Var(id) => format!("var({})", id),
+            &Type::Schema(ref t, ref b) => {
+                let mut s = "".to_string();
+                for a in t {
+                    s = s + a.to_string().as_str() + " ";
+                }
+                s += b.to_string().as_str();
+                format!("schema({:?})", s)
+            }
         }
     }
 }
@@ -103,6 +112,13 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
         }
         NodeKind::FloatBinaryOp(ref op, ref lhs, ref rhs) => {
             NodeKind::FloatBinaryOp(
+                op.clone(),
+                Box::new(deref_term(&**lhs, tyenv)),
+                Box::new(deref_term(&**rhs, tyenv)),
+            )
+        }
+        NodeKind::CompBinaryOp(ref op, ref lhs, ref rhs) => {
+            NodeKind::CompBinaryOp(
                 op.clone(),
                 Box::new(deref_term(&**lhs, tyenv)),
                 Box::new(deref_term(&**rhs, tyenv)),
@@ -214,33 +230,108 @@ pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(
     }
 }
 
-fn update(ty: Type, tyenv1: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> Type {
+fn subst(ty: Type, tyenv: &mut HashMap<usize, Type>, map: HashMap<usize, Type>) -> Type {
+    macro_rules! seq {
+        ($es:expr) => ({
+            let mut argtys = Vec::new();
+            for e in $es.iter() { argtys.push(subst(e.clone(), tyenv, map.clone())); }
+            argtys 
+        });
+    }
     match ty {
-        Type::Func(params, ret) => {
-            let mut newparams: Vec<Type> = Vec::new();
-            let mut tyenv = HashMap::new();
-            for p in params {
-                newparams.push(if let Some(n) = var_n(&p) {
-                    match tyenv.entry(n) {
-                        hash_map::Entry::Occupied(o) => o.into_mut(),
-                        hash_map::Entry::Vacant(v) => v.insert(idgen.get_type()),
-                    }.clone()
-                } else {
-                    p
-                })
-            }
-            let newret = if let Some(n) = var_n(&ret) {
-                match tyenv.entry(n) {
-                    hash_map::Entry::Occupied(o) => o.into_mut(),
-                    hash_map::Entry::Vacant(v) => v.insert(idgen.get_type()),
-                }.clone()
+        Type::Unit | Type::Bool | Type::Int | Type::Float | Type::Char => ty,
+        Type::Func(params, ret) => Type::Func(seq!(params), Box::new(subst(*ret, tyenv, map))),
+        Type::Var(id) => {
+            if let Some(t) = map.get(&id).cloned() {
+                t
+            } else if let Some(t) = tyenv.get(&id).cloned() {
+                subst(t, tyenv, map)
             } else {
-                *ret
-            };
-            Type::Func(newparams, Box::new(newret))
+                ty
+            }
+        }
+        _ => panic!(),
+    }
+}
+
+fn update(ty: Type, tyenv: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> Type {
+    match ty {
+        Type::Schema(tyvars, bodyty) => {
+            let mut map = HashMap::new();
+            let mut oldtyvars = tyvars;
+            let mut newtyvars = vec![];
+            for o in oldtyvars {
+                let v = idgen.get_type();
+                map.insert(var_n(&o).unwrap(), v.clone());
+                newtyvars.push(v);
+            }
+            println!("old body ty {:?}", bodyty);
+            let newbodyty = subst(*bodyty, tyenv, map);
+            println!("new body ty {:?}", newbodyty);
+            Type::Schema(newtyvars, Box::new(newbodyty))
+        }
+        // Type::Func(params, ret) => {
+        //     let mut newparams: Vec<Type> = Vec::new();
+        //     let mut tyenv = HashMap::new();
+        //     for p in params {
+        //         newparams.push(if let Some(n) = var_n(&p) {
+        //             match tyenv.entry(n) {
+        //                 hash_map::Entry::Occupied(o) => o.into_mut(),
+        //                 hash_map::Entry::Vacant(v) => v.insert(idgen.get_type()),
+        //             }.clone()
+        //         } else {
+        //             p
+        //         })
+        //     }
+        //     let newret = if let Some(n) = var_n(&ret) {
+        //         match tyenv.entry(n) {
+        //             hash_map::Entry::Occupied(o) => o.into_mut(),
+        //             hash_map::Entry::Vacant(v) => v.insert(idgen.get_type()),
+        //         }.clone()
+        //     } else {
+        //         *ret
+        //     };
+        //     Type::Func(newparams, Box::new(newret))
+        // }
+        _ => panic!(),
+    }
+}
+
+fn unwrapvar(ty: Type, tyenv: &mut HashMap<usize, Type>, freevars: &mut Vec<Type>) -> Type {
+    macro_rules! seq {
+        ($es:expr) => ({
+            let mut argtys = Vec::new();
+            for e in $es.iter() { argtys.push(unwrapvar(e.clone(), tyenv, freevars)); }
+            argtys 
+        });
+    }
+
+    match ty {
+        Type::Unit | Type::Bool | Type::Int | Type::Float | Type::Char => ty,
+        Type::Func(params, ret) => {
+            Type::Func(seq!(params), Box::new(unwrapvar(*ret, tyenv, freevars)))
+        }
+        Type::Var(id) => {
+            if let Some(t) = tyenv.get(&id).cloned() {
+                unwrapvar(t, tyenv, freevars)
+            } else {
+                for f in freevars.clone() {
+                    if f == ty {
+                        return ty;
+                    }
+                }
+                freevars.push(ty.clone());
+                return ty;
+            }
         }
         _ => ty,
     }
+}
+
+fn createpoly(ty: Type, tyenv: &mut HashMap<usize, Type>) -> Type {
+    let mut freev = vec![];
+    let ut = unwrapvar(ty, tyenv, &mut freev);
+    Type::Schema(freev, Box::new(ut))
 }
 
 fn var_n(ty: &Type) -> Option<usize> {
@@ -272,7 +363,14 @@ pub fn g(
         NodeKind::Float(_) => Ok(Type::Float),
         NodeKind::Ident(ref name) => {
             if let Some(t) = env.get(name).cloned() {
-                Ok(update(t, tyenv, idgen))
+                Ok({
+                    if let Type::Schema(_, bodyty) = update(t.clone(), tyenv, idgen) {
+                        *bodyty
+                    } else {
+                        println!("{:?}", t);
+                        panic!()
+                    }
+                })
             } else if let Some(t) = EXTENV.lock().unwrap().get(name).cloned() {
                 Ok(t)
             } else {
@@ -290,39 +388,52 @@ pub fn g(
             try!(unify(&try!(g(rhs, env, tyenv, idgen)), &Type::Float, tyenv));
             Ok(Type::Float)
         }
+        NodeKind::CompBinaryOp(_, ref lhs, ref rhs) => {
+            let a = try!(g(lhs, env, tyenv, idgen));
+            let b = try!(g(rhs, env, tyenv, idgen));
+            try!(unify(&a, &b, tyenv));
+            println!("comp {:?}", tyenv);
+            Ok(Type::Bool)
+        }
         NodeKind::Call(ref callee, ref args) => {
             let ty = idgen.get_type();
             let callee_ty = try!(g(callee, env, tyenv, idgen));
             let functy = Type::Func(g_seq!(args), Box::new(ty.clone()));
+            println!("call: {:?}", callee_ty);
+            println!("      {:?}", functy);
             try!(unify(&callee_ty, &functy, tyenv));
             Ok(ty)
         }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
             let t = try!(g(expr, env, tyenv, idgen));
             try!(unify(&t, ty, tyenv));
+            let p = createpoly(t, tyenv);
             let mut newenv = env.clone();
-            newenv.insert(name.clone(), update(t, tyenv, idgen));
+            newenv.insert(name.clone(), p);
             g(body, &newenv, tyenv, idgen)
         }
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
             let (name, ty) = funcdef.name.clone();
             let params = &funcdef.params;
             let mut newenv = env.clone();
-            newenv.insert(name.clone(), ty.clone());
+            newenv.insert(name.clone(), Type::Schema(vec![], Box::new(ty.clone())));
             let mut newenv_body = newenv.clone();
             for &(ref x, ref t) in params.iter() {
-                newenv_body.insert(x.to_string(), t.clone());
+                println!(" ({}, {:?})", x, t);
+                newenv_body.insert(x.to_string(), Type::Schema(vec![], Box::new(t.clone())));
             }
-            let newty = deref_ty(
-                &Type::Func(
-                    params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
-                    Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
-                ),
-                tyenv,
+            let newty = Type::Func(
+                params.iter().map(|p| p.1.clone()).collect::<Vec<_>>(),
+                Box::new(try!(g(expr, &newenv_body, tyenv, idgen))),
             );
             try!(unify(&ty, &newty, tyenv));
-            newenv.insert(name.clone(), update(newty, tyenv, idgen));
-            g(body, &newenv, tyenv, idgen)
+            println!("complete functy: {:?}", newty);
+            let a = createpoly(newty, tyenv);
+            println!("{:?} {:?}", a, tyenv);
+            // a = update(a.clone(), tyenv, idgen);
+            newenv.insert(name.clone(), a.clone());
+            let b = g(body, &newenv, tyenv, idgen);
+            b
         }
         NodeKind::LetDef((ref name, ref ty), ref expr) => {
             try!(unify(&try!(g(expr, env, tyenv, idgen)), ty, tyenv));

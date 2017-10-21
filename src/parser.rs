@@ -83,27 +83,6 @@ named!(expr<NodeKind>,
     )
 );
 
-named!(expr_mul_div<NodeKind>,
-    do_parse!(
-        init: expr_unary >> 
-        res:  fold_many0!(
-                do_parse!(
-                    opt_spaces >> 
-                    op: alt!(tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
-                    opt_spaces >> 
-                    rhs: expr_mul_div >> 
-                    (op, rhs)
-                ),
-                init,
-                |n1, (op, n2): (&[u8], NodeKind)| {
-                    let (op, is_int) = node::str_to_binop(str::from_utf8(op).unwrap());
-                    if is_int { NodeKind::IntBinaryOp(op, Box::new(n1), Box::new(n2)) } 
-                    else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
-                }
-        ) >> (res)
-    )
-);
-
 named!(expr_add_sub<NodeKind>,
     do_parse!(
         init: expr_mul_div >> 
@@ -120,6 +99,49 @@ named!(expr_add_sub<NodeKind>,
                     let (op, is_int) = node::str_to_binop(str::from_utf8(op).unwrap());
                     if is_int { NodeKind::IntBinaryOp(op, Box::new(n1), Box::new(n2)) } 
                     else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
+                }
+        ) >> (res)
+    )
+);
+
+named!(expr_mul_div<NodeKind>,
+    do_parse!(
+        init: expr_comp >> 
+        res:  fold_many0!(
+                do_parse!(
+                    opt_spaces >> 
+                    op: alt!(tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
+                    opt_spaces >> 
+                    rhs: expr_comp >> 
+                    (op, rhs)
+                ),
+                init,
+                |n1, (op, n2): (&[u8], NodeKind)| {
+                    let (op, is_int) = node::str_to_binop(str::from_utf8(op).unwrap());
+                    if is_int { NodeKind::IntBinaryOp(op, Box::new(n1), Box::new(n2)) } 
+                    else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
+                }
+        ) >> (res)
+    )
+);
+
+named!(expr_comp<NodeKind>,
+    do_parse!(
+        init: expr_unary >> 
+        res:  fold_many0!(
+                do_parse!(
+                    opt_spaces >> 
+                    op: alt!(
+                        tag!("=") | tag!("<>") | tag!("==") | tag!("!=") |
+                        tag!("<") | tag!(">") | tag!("<=") | tag!(">=") 
+                        ) >>
+                    opt_spaces >> 
+                    rhs: expr_unary >> 
+                    (op, rhs)
+                ),
+                init,
+                |n1, (op, n2): (&[u8], NodeKind)| {
+                    NodeKind::CompBinaryOp(node::str_to_comp_binop(str::from_utf8(op).unwrap()), Box::new(n1), Box::new(n2)) 
                 }
         ) >> (res)
     )

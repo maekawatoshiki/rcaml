@@ -9,7 +9,7 @@ use node::NodeKind;
 
 use id::IdGen;
 
-use typing::Type;
+use typing::{Type, TypeScheme};
 
 use std::boxed::Box;
 
@@ -499,17 +499,20 @@ pub fn parse_and_infer_type(e: &str) {
 use std::sync::Mutex;
 
 lazy_static! {
-    pub static ref EXTENV: Mutex<HashMap<String, Type>> = {
+    pub static ref EXTENV: Mutex<HashMap<String, TypeScheme>> = {
         let mut extenv = HashMap::new();
         extenv.insert("print_int".to_string(), 
-                      Type::Func(vec![Type::Int], 
-                      Box::new(Type::Unit)));
+                      TypeScheme::new(vec![], Type::Func(
+                                                vec![Type::Int], 
+                                                Box::new(Type::Unit))));
         extenv.insert("print_float".to_string(), 
-                      Type::Func(vec![Type::Float], 
-                      Box::new(Type::Unit)));
+                      TypeScheme::new(vec![], Type::Func(
+                                                vec![Type::Float], 
+                                                Box::new(Type::Unit))));
         extenv.insert("print_newline".to_string(), 
-                      Type::Func(vec![Type::Unit], 
-                      Box::new(Type::Unit)));
+                      TypeScheme::new(vec![], Type::Func(
+                                                vec![Type::Unit], 
+                                                Box::new(Type::Unit))));
         Mutex::new(extenv)
     };
 }

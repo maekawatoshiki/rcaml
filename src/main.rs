@@ -49,6 +49,7 @@ fn main() {
         parser::parse_and_infer_type(
             "let f a b = let g c = a = c in g b in let a = f 1 2 in let b = f 1.2 2.3 in b",
         );
+        parser::parse_and_infer_type("let id x = x in let f y = id (y id) in let f = f in f");
 
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";

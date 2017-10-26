@@ -13,7 +13,7 @@ use std::collections::{HashMap, hash_map, VecDeque};
 use node::{NodeKind, FuncDef, BinOps};
 use node;
 
-use typing::Type;
+use typing::{Type, TypeScheme};
 use typing;
 
 use parser::EXTENV;
@@ -236,16 +236,20 @@ impl<'a> CodeGen<'a> {
             panic!("not supported")
         };
 
-        let (func_param_tys, func_ret_ty) =
-            if let Some(func_ty) = EXTENV.lock().unwrap().get(name).cloned() {
-                if let Type::Func(param_tys, ret_ty) = func_ty {
-                    (param_tys, ret_ty)
-                } else {
-                    panic!("not func");
-                }
+        let (func_param_tys, func_ret_ty) = if let Some(TypeScheme {
+                                                            tyvars: _,
+                                                            body: func_ty,
+                                                        }) =
+            EXTENV.lock().unwrap().get(name).cloned()
+        {
+            if let Type::Func(param_tys, ret_ty) = func_ty {
+                (param_tys, ret_ty)
             } else {
-                panic!("not found func");
-            };
+                panic!("not func");
+            }
+        } else {
+            panic!("not found func");
+        };
 
         let mut args_val = Vec::new();
         for arg in args {

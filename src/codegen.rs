@@ -182,6 +182,10 @@ impl<'a> CodeGen<'a> {
             // &NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => {
             //     self.gen_int_binop(op, &*lhs, &*rhs)
             // }
+            &NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => {
+                self.gen_int_binop(&*op, &*lhs, &*rhs)
+            }
+            // &NodeKind:: FloatUnaryOp(UnaryOps, Box<NodeKind>)
             &NodeKind::Ident(ref name) => self.gen_var_load(name),
             &NodeKind::Int(ref i) => self.gen_int(*i),
             &NodeKind::Unit => self.gen_int(0), // tmp
@@ -270,7 +274,59 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    // unsafe fn gen_int_binop
+    unsafe fn gen_int_binop(
+        &mut self,
+        op: &BinOps,
+        lhs: &NodeKind,
+        rhs: &NodeKind,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let inst_name = |s: &str| CString::new(s).unwrap().as_ptr();
+        let lhs_val = try!(self.gen_expr(lhs));
+        let rhs_val = try!(self.gen_expr(rhs));
+        match op {
+            &BinOps::IAdd => {
+                Ok(LLVMBuildAdd(
+                    self.builder,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("add"),
+                ))
+            }
+            &BinOps::ISub => {
+                Ok(LLVMBuildSub(
+                    self.builder,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("sub"),
+                ))
+            }
+            &BinOps::IMul => {
+                Ok(LLVMBuildMul(
+                    self.builder,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("mul"),
+                ))
+            }
+            &BinOps::IDiv => {
+                Ok(LLVMBuildSDiv(
+                    self.builder,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("div"),
+                ))
+            }
+            &BinOps::IMod => {
+                Ok(LLVMBuildSRem(
+                    self.builder,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("rem"),
+                ))
+            }
+            _ => panic!("not implemented"),
+        }
+    }
 
     unsafe fn lookup_var(&mut self, name: &String) -> CodeGenResult<LLVMValueRef> {
         if let Some(&(ref _ty, _llvmty, val)) = self.global_varmap.get(name.as_str()) {

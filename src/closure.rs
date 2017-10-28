@@ -13,10 +13,15 @@ pub enum Closure {
     AppDir(Box<Closure>, Vec<Closure>),
 }
 
-fn g(env: &HashMap<String, Type>, known: &HashSet<String>, e: NodeKind) -> Closure {
-    Closure::Unit
+fn g(node: NodeKind, env: &HashMap<String, Type>, known: &HashSet<String>) -> Closure {
+    match node {
+        NodeKind::Unit => Closure::Unit,
+        NodeKind::Int(i) => Closure::Int(i),
+        NodeKind::Float(f) => Closure::Float(f),
+        _ => panic!(),
+    }
 }
 
 pub fn f(e: NodeKind) -> Closure {
-    g(&HashMap::new(), &HashSet::new(), e)
+    g(e, &HashMap::new(), &HashSet::new())
 }

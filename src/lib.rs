@@ -3,6 +3,7 @@ pub mod node;
 pub mod typing;
 pub mod id;
 pub mod codegen;
+pub mod closure;
 
 #[macro_use]
 extern crate nom;

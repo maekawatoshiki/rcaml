@@ -15,11 +15,14 @@ pub enum Type {
     Char,
     Func(Vec<Type>, Box<Type>), // (param types, return type, is type inference complete?)
     Var(usize), // id
-    Schema(Vec<Type>, Box<Type>),
 }
 
 impl Type {
     pub fn to_string(&self) -> String {
+        self.to_string_sub(&mut 0, &mut HashMap::new())
+    }
+
+    pub fn to_string_sub(&self, i: &mut usize, m: &mut HashMap<usize, usize>) -> String {
         match self {
             &Type::Unit => "unit".to_string(),
             &Type::Bool => "bool".to_string(),
@@ -27,19 +30,43 @@ impl Type {
             &Type::Int => "int".to_string(),
             &Type::Float => "float".to_string(),
             &Type::Func(ref param_tys, ref ret_ty) => {
-                param_tys.into_iter().fold("".to_string(), |acc, ts| {
-                    acc + ts.to_string().as_str() + " -> "
-                }) + ret_ty.to_string().as_str() + " = <fun>"
+                format!(
+                    "({})",
+                    param_tys.into_iter().fold(
+                        "".to_string(),
+                        |acc, ts| match *ts {
+                            Type::Var(id) => {
+                                acc +
+                                    format!(
+                                        "\'{}",
+                                        m.entry(id)
+                                            .or_insert_with(|| {
+                                                *i += 1;
+                                                *i
+                                            })
+                                            .clone()
+                                    ).as_str()
+                            }
+                            _ => acc + ts.to_string_sub(i, m).as_str(),
+                        } +
+                            " -> ",
+                    ) +
+                        if let Type::Var(id) = **ret_ty {
+                            format!(
+                                "\'{}",
+                                m.entry(id)
+                                    .or_insert_with(|| {
+                                        *i += 1;
+                                        *i
+                                    })
+                                    .clone()
+                            )
+                        } else {
+                            ret_ty.to_string_sub(i, m)
+                        }.as_str()
+                )
             }
             &Type::Var(id) => format!("var({})", id),
-            &Type::Schema(ref t, ref b) => {
-                let mut s = "".to_string();
-                for a in t {
-                    s = s + a.to_string().as_str() + " ";
-                }
-                s += b.to_string().as_str();
-                format!("schema({:?})", s)
-            }
         }
     }
 }

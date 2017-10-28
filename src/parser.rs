@@ -564,3 +564,31 @@ pub fn test_parse_module_item() {
                                                    Box::new(Ident("x".to_string())), 
                                                    Box::new(Int(2))))));
 }
+
+#[test]
+pub fn test_type_infer() {
+    use node::NodeKind::*;
+    use node::FuncDef;
+    use node::BinOps::*;
+    use node::BinOps::*;
+    use id::IdGen;
+    use typing;
+
+    let mut idgen = IdGen::new();
+
+    let mut f = |e: &str| match module_item(e.as_bytes()) {
+        IResult::Done(remain, node) => {
+            let uniquified = uniquify(node, &mut idgen);
+            typing::g(
+                &uniquified,
+                &HashMap::new(),
+                &mut HashMap::new(),
+                &mut idgen,
+            )
+        }
+        IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}", needed)),
+        IResult::Error(err) => panic!(format!("error: {:?}", err)),
+    };
+
+    assert_eq!(f("let id x = x in let f y = id (y id) in let f = f in f").unwrap().to_string(), "((('1 -> '1) -> '2) -> '2)");
+}

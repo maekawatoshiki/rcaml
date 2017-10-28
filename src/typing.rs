@@ -30,37 +30,18 @@ impl Type {
             &Type::Int => "int".to_string(),
             &Type::Float => "float".to_string(),
             &Type::Func(ref param_tys, ref ret_ty) => {
+                macro_rules! name { ($id:expr) => ( format!("\'{}", m.entry($id).or_insert_with(|| { *i += 1; *i }).clone()) ) };
                 format!(
                     "({})",
-                    param_tys.into_iter().fold(
-                        "".to_string(),
-                        |acc, ts| match *ts {
-                            Type::Var(id) => {
-                                acc +
-                                    format!(
-                                        "\'{}",
-                                        m.entry(id)
-                                            .or_insert_with(|| {
-                                                *i += 1;
-                                                *i
-                                            })
-                                            .clone()
-                                    ).as_str()
-                            }
-                            _ => acc + ts.to_string_sub(i, m).as_str(),
-                        } +
-                            " -> ",
-                    ) +
+                    param_tys.into_iter().fold("".to_string(), |acc, ts| {
+                        acc +
+                            match *ts {
+                                Type::Var(id) => name!(id),
+                                _ => ts.to_string_sub(i, m),
+                            }.as_str() + " -> "
+                    }) +
                         if let Type::Var(id) = **ret_ty {
-                            format!(
-                                "\'{}",
-                                m.entry(id)
-                                    .or_insert_with(|| {
-                                        *i += 1;
-                                        *i
-                                    })
-                                    .clone()
-                            )
+                            name!(id)
                         } else {
                             ret_ty.to_string_sub(i, m)
                         }.as_str()
@@ -333,7 +314,7 @@ fn generalize(
     let ty = deref_ty(&ty, tyenv);
     let mut ty_tyvars = vec![];
     unwrap_var(ty.clone(), tyenv, &mut ty_tyvars);
-    println!("cratepoly >> {:?}", ty_tyvars);
+    // println!("cratepoly >> {:?}", ty_tyvars);
     let mut new_env = Vec::new();
     for (_key, tyscheme) in env {
         let body = deref_ty(&tyscheme.body, tyenv);
@@ -342,7 +323,7 @@ fn generalize(
         new_env.extend(subtract(body_tyvars, &tyscheme.tyvars));
     }
     let newone = subtract(ty_tyvars, &new_env);
-    println!("generalize >> {:?}", newone);
+    // println!("generalize >> {:?}", newone);
     TypeScheme::new(newone, ty)
 }
 

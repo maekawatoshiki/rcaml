@@ -37,7 +37,7 @@ impl NodeKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinOps {
     IAdd,
     FAdd,
@@ -65,7 +65,7 @@ pub fn str_to_binop(opstr: &str) -> (BinOps, bool) {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompBinOps {
     SEq,
     SNe,
@@ -91,7 +91,7 @@ pub fn str_to_comp_binop(opstr: &str) -> CompBinOps {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOps {
     INeg,
     FNeg,

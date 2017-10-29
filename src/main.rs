@@ -51,6 +51,8 @@ fn main() {
         );
         parser::parse_and_infer_type("let id x = x in let f y = id (y id) in let f = f in f");
 
+        parser::parse_and_infer_type_and_closure_conv("let f x = let g y = x + y in g x in f 1");
+
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";
         println!("--- following code doesn't run now ---");

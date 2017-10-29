@@ -15,3 +15,5 @@ libc = "*"
 nom = "^3.2"
 
 clap = "~2.26"
+
+ordered-float = "0.5.0"

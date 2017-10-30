@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use node;
 use node::NodeKind;
+use closure::Prog;
 
 use id::IdGen;
 
@@ -442,14 +443,15 @@ pub fn parse_and_show_module_item(e: &str) {
     });
 }
 
-pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
+pub fn parse_module_items(e: &str) -> Vec<Prog> {
     use typing;
     use id;
     use codegen;
+    use closure;
 
     let mut idgen = id::IdGen::new();
     let mut tyenv = HashMap::new();
-    let mut nodes = Vec::new();
+    let mut progs = Vec::new();
     let mut code = e;
 
     while code.len() > 0 {
@@ -457,7 +459,9 @@ pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
             IResult::Done(remain, node) => {
                 let uniquified = uniquify(node, &mut idgen);
                 println!("{:?}", uniquified.clone());
-                nodes.push(typing::f(&uniquified, &mut tyenv, &mut idgen));
+                let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
+                let closured = closure::f(infered);
+                progs.push(closured);
                 code = str::from_utf8(remain).unwrap();
             }
             IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}", needed)),
@@ -465,15 +469,15 @@ pub fn parse_module_items(e: &str) -> Vec<NodeKind> {
         }
     }
 
-    for node in &nodes {
-        println!("{:?}", node);
+    for prog in &progs {
+        println!("{:?}", prog);
     }
 
     unsafe {
         let mut codegen = codegen::CodeGen::new(&mut tyenv);
-        codegen.gen(nodes.clone());
+        codegen.gen(progs.clone());
     }
-    nodes
+    progs
 }
 
 extern crate ansi_term;

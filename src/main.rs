@@ -56,8 +56,8 @@ fn main() {
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";
         println!("--- following code doesn't run now ---");
-        let e = "let a = 123;; print_int (a + 7);; print_newline ()";
-        // let e = "let a = 123;; print_int a;; print_newline ()";
+        // let e = "let a = 123;; print_int (a + 7);; print_newline ()";
+        let e = "let x = 1.2 in let y = 1.11 in print_float (x +. y);; print_newline ()";
         println!(">> {}", e);
         let nodes = parser::parse_module_items(e);
         for (i, node) in nodes.iter().enumerate() {

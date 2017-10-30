@@ -29,13 +29,16 @@ pub enum Closure {
     MakeCls(String, Type, Cls, Box<Closure>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FuncDef {
     pub name: (String, Type),
     pub params: Vec<(String, Type)>,
     pub formal_fv: Vec<(String, Type)>,
     pub body: Box<Closure>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Prog(pub Vec<FuncDef>, pub Closure);
 
 macro_rules! build_set {
     ($($x:expr),*) => ({
@@ -223,10 +226,8 @@ fn g(
     }
 }
 
-pub fn f(e: NodeKind) -> (Closure, Vec<FuncDef>) {
+pub fn f(e: NodeKind) -> Prog {
     let mut toplevel = Vec::new();
-    (
-        g(e, &HashMap::new(), &HashSet::new(), &mut toplevel),
-        toplevel,
-    )
+    let e = g(e, &HashMap::new(), &HashSet::new(), &mut toplevel);
+    Prog(toplevel, e)
 }

@@ -443,6 +443,10 @@ pub fn parse_and_show_module_item(e: &str) {
     });
 }
 
+extern crate ansi_term;
+use self::ansi_term::{Colour, Style};
+
+// TODO: this func parses code and even runs program
 pub fn parse_module_items(e: &str) -> Vec<Prog> {
     use typing;
     use id;
@@ -454,6 +458,8 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
     let mut progs = Vec::new();
     let mut code = e;
 
+    println!("{}", Style::new().underline().bold().paint(format!("expression:\t{}", code)));
+
     while code.len() > 0 {
         match module_item(code.as_bytes()) {
             IResult::Done(remain, node) => {
@@ -461,6 +467,7 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
                 println!("{:?}", uniquified.clone());
                 let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
                 let closured = closure::f(infered);
+                println!("{}", Colour::Green.bold().paint(format!("program:\t{:?}", closured)));
                 progs.push(closured);
                 code = str::from_utf8(remain).unwrap();
             }
@@ -469,19 +476,12 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
         }
     }
 
-    for prog in &progs {
-        println!("{:?}", prog);
-    }
-
     unsafe {
         let mut codegen = codegen::CodeGen::new(&mut tyenv);
         codegen.gen(progs.clone());
     }
     progs
 }
-
-extern crate ansi_term;
-use self::ansi_term::{Colour, Style};
 
 pub fn parse_and_infer_type(e: &str) {
     println!("{}", Style::new().underline().bold().paint(format!("expression:\t{}",e)));

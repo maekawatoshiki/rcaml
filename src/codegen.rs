@@ -14,6 +14,7 @@ use node::{NodeKind, FuncDef, BinOps};
 use node;
 
 use closure::{Closure, Prog};
+use closure;
 
 use typing::{Type, TypeScheme};
 use typing;
@@ -31,6 +32,7 @@ pub struct CodeGen<'a> {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
     exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
+    llvm_main_fun: Option<LLVMValueRef>,
     tyenv: &'a mut HashMap<usize, Type>,
     ext_funcmap: HashMap<String, ExtFunc>,
     global_varmap: HashMap<String, (Type, LLVMTypeRef, LLVMValueRef)>,
@@ -157,6 +159,7 @@ impl<'a> CodeGen<'a> {
             module: module,
             builder: LLVMCreateBuilderInContext(context),
             exec_engine: ee,
+            llvm_main_fun: None,
             tyenv: tyenv,
             ext_funcmap: ext_funcmap,
             global_varmap: HashMap::new(),
@@ -168,14 +171,18 @@ impl<'a> CodeGen<'a> {
         let main = LLVMAddFunction(self.module, CString::new("main").unwrap().as_ptr(), main_ty);
         let bb_entry = LLVMAppendBasicBlock(main, CString::new("entry").unwrap().as_ptr());
         LLVMPositionBuilderAtEnd(self.builder, bb_entry);
-
+        self.llvm_main_fun = Some(main);
         // let mut funcs = Vec::new();
 
-        for Prog(func, expr) in progs {
+        for Prog(funs, expr) in progs {
+            let mut env = HashMap::new();
+            for fun in funs {
+                try!(self.gen_fun(&mut env, &fun));
+            }
             match &expr {
                 // &NodeKind::LetFuncDef(ref funcdef, ref expr) => funcs.push(node.clone()),
                 _ => {
-                    try!(self.gen_expr(&HashMap::new(), &expr));
+                    try!(self.gen_expr(&env, &HashMap::new(), &expr));
                     ()
                 }
             }
@@ -197,14 +204,63 @@ impl<'a> CodeGen<'a> {
         Ok(ptr::null_mut())
     }
 
+    unsafe fn gen_fun(
+        &mut self,
+        env: &mut HashMap<String, LLVMValueRef>,
+        cls: &closure::FuncDef,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let tmp_builder = self.builder;
+        self.builder = LLVMCreateBuilderInContext(self.context);
+
+        let (ref name, ref fun_ty) = cls.name;
+        let fun_ty = if let &Type::Func(ref params, ref ret) = fun_ty {
+            let mut newparams = Vec::new();
+            for &(_, ref param_ty) in &cls.formal_fv {
+                newparams.push(param_ty.clone());
+            }
+            newparams.extend(params.iter().cloned());
+            Type::Func(newparams, ret.clone())
+        } else {
+            panic!()
+        };
+        let llvm_fun_ty = fun_ty.to_llvmty();
+        let llvm_fun = LLVMAddFunction(
+            self.module,
+            CString::new(name.as_str()).unwrap().as_ptr(),
+            llvm_fun_ty,
+        );
+        env.insert(name.clone(), llvm_fun);
+
+        let bb_entry = LLVMAppendBasicBlock(llvm_fun, CString::new("entry").unwrap().as_ptr());
+        LLVMPositionBuilderAtEnd(self.builder, bb_entry);
+
+        for (i, &(ref param_name, ref param_ty)) in cls.formal_fv.iter().enumerate() {
+            let param_val = LLVMGetParam(llvm_fun, i as u32);
+            let var = try!(self.declare_local_var(env, &param_name, &param_ty));
+            LLVMBuildStore(self.builder, param_val, var);
+        }
+        for (i, &(ref param_name, ref param_ty)) in cls.params.iter().enumerate() {
+            let param_val = LLVMGetParam(llvm_fun, i as u32);
+            let var = try!(self.declare_local_var(env, &param_name, &param_ty));
+            LLVMBuildStore(self.builder, param_val, var);
+        }
+
+        let ret_val = try!(self.gen_expr(env, &HashMap::new(), &*cls.body));
+        LLVMBuildRet(self.builder, ret_val);
+
+        self.builder = tmp_builder;
+        Ok(ptr::null_mut())
+    }
+
     unsafe fn gen_expr(
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
         closure: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         match closure {
             &Closure::LetExpr((ref name, ref ty), ref expr, ref body) => {
-                self.gen_letexpr(env, name, ty, expr, body)
+                self.gen_letexpr(env, fv, name, ty, expr, body)
             }
             // LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
             // LetFuncExpr(FuncDef, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
@@ -216,7 +272,13 @@ impl<'a> CodeGen<'a> {
             // &NodeKind::LetFuncDef(ref funcdef, ref expr) => self.gen_letfuncdef(&*funcdef, &*expr),
 
             // Call(Box<NodeKind>, Vec<NodeKind>),
-            &Closure::AppCls(ref callee, ref args) => self.gen_call(env, &*callee, &*args),
+            &Closure::AppCls(ref callee, ref args) => self.gen_call(env, fv, &*callee, &*args),
+            &Closure::AppDir(ref callee, ref args) => self.gen_call(env, fv, &*callee, &*args),
+
+            // MakeCls(String, Type, Cls, Box<Closure>),
+            &Closure::MakeCls(ref name, ref ty, ref cls, ref body) => {
+                self.gen_makecls(env, fv, &*name, &*ty, &*cls, &*body)
+            }
             // &NodeKind::Call(ref callee, ref args) => self.gen_call(&*callee, &*args),
 
             // IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
@@ -224,33 +286,59 @@ impl<'a> CodeGen<'a> {
             //     self.gen_int_binop(op, &*lhs, &*rhs)
             // }
             &Closure::IntBinaryOp(ref op, ref lhs, ref rhs) => {
-                self.gen_int_binop(env, &*op, &*lhs, &*rhs)
+                self.gen_int_binop(env, fv, &*op, &*lhs, &*rhs)
             }
             &Closure::FloatBinaryOp(ref op, ref lhs, ref rhs) => {
-                self.gen_float_binop(env, &*op, &*lhs, &*rhs)
+                self.gen_float_binop(env, fv, &*op, &*lhs, &*rhs)
             }
             // &NodeKind:: FloatUnaryOp(UnaryOps, Box<NodeKind>)
             &Closure::Var(ref name) => self.gen_var_load(env, name),
             &Closure::Int(ref i) => self.gen_int(*i),
             &Closure::Float(ref f) => self.gen_float(f.into_inner()),
             &Closure::Unit => self.gen_int(0), // tmp
-            _ => panic!("not implemented"),
+            _ => panic!(format!("not implemented {:?}", closure)),
         }
+    }
+
+    unsafe fn declare_local_var(
+        &mut self,
+        env: &mut HashMap<String, LLVMValueRef>,
+        name: &String,
+        ty: &Type,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let builder = LLVMCreateBuilderInContext(self.context);
+        // let entry_bb = LLVMGetEntryBasicBlock(self.llvm_main_fun.unwrap());
+        let entry_bb = LLVMGetInsertBlock(self.builder);
+        let first_inst = LLVMGetFirstInstruction(entry_bb);
+        // let var is always declared at the first of entry block
+        if first_inst == ptr::null_mut() {
+            LLVMPositionBuilderAtEnd(builder, entry_bb);
+        } else {
+            LLVMPositionBuilderBefore(builder, first_inst);
+        }
+        let var = LLVMBuildAlloca(
+            builder,
+            ty.to_llvmty(),
+            CString::new(name.as_str()).unwrap().as_ptr(),
+        );
+        env.insert(name.to_owned(), var);
+        Ok(var)
     }
 
     pub unsafe fn gen_letexpr(
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
         name: &String,
         ty: &Type,
         expr: &Closure,
         body: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
-        let llvm_expr_val = try!(self.gen_expr(env, expr));
         let mut newenv = env.clone();
-        LLVMDumpValue(llvm_expr_val);
-        newenv.insert(name.to_owned(), llvm_expr_val);
-        self.gen_expr(&newenv, body)
+        let var = try!(self.declare_local_var(&mut newenv, name, ty));
+        let llvm_expr_val = try!(self.gen_expr(env, fv, expr));
+        LLVMBuildStore(self.builder, llvm_expr_val, var);
+        self.gen_expr(&newenv, fv, body)
     }
 
     // pub unsafe fn gen_letdef(
@@ -289,9 +377,24 @@ impl<'a> CodeGen<'a> {
     //     Ok(ptr::null_mut())
     // }
 
+    unsafe fn gen_makecls(
+        &mut self,
+        env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
+        name: &String,
+        ty: &Type,
+        cls: &closure::Cls,
+        body: &Closure,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let mut newfv = fv.clone();
+        newfv.insert(cls.entry.clone(), cls.actual_fv.clone());
+        self.gen_expr(env, &newfv, body)
+    }
+
     unsafe fn gen_call(
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
         callee: &Closure,
         args: &Vec<Closure>,
     ) -> CodeGenResult<LLVMValueRef> {
@@ -301,50 +404,51 @@ impl<'a> CodeGen<'a> {
             panic!("not supported")
         };
 
-        let (func_param_tys, func_ret_ty) = if let Some(TypeScheme {
-                                                            tyvars: _,
-                                                            body: func_ty,
-                                                        }) =
-            EXTENV.lock().unwrap().get(name).cloned()
-        {
-            if let Type::Func(param_tys, ret_ty) = func_ty {
-                (param_tys, ret_ty)
-            } else {
-                panic!("not func");
-            }
-        } else {
-            panic!("not found func");
-        };
-
         let mut args_val = Vec::new();
+        // insert free variables
+        if let Some(actual_fv) = fv.get(name) {
+            for x in actual_fv {
+                let llvm_arg = try!(self.gen_var_load(env, x));
+                args_val.push(llvm_arg);
+            }
+        }
         for arg in args {
-            let llvm_arg = try!(self.gen_expr(env, &arg));
+            let llvm_arg = try!(self.gen_expr(env, fv, &arg));
             args_val.push(llvm_arg);
         }
 
-        if let Some(func) = self.ext_funcmap.get(name) {
-            Ok(LLVMBuildCall(
+        // TODO: not wise
+        if let Some(fun) = self.ext_funcmap.get(name) {
+            return Ok(LLVMBuildCall(
                 self.builder,
-                func.llvm_val,
+                fun.llvm_val,
                 args_val.as_mut_slice().as_mut_ptr(),
                 args_val.len() as u32,
                 CString::new("").unwrap().as_ptr(),
-            ))
-        } else {
-            Ok(ptr::null_mut())
+            ));
         }
+
+        let fun = try!(self.lookup_var(env, name));
+        Ok(LLVMBuildCall(
+            self.builder,
+            fun,
+            args_val.as_mut_slice().as_mut_ptr(),
+            args_val.len() as u32,
+            CString::new("").unwrap().as_ptr(),
+        ))
     }
 
     unsafe fn gen_int_binop(
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
         op: &BinOps,
         lhs: &Closure,
         rhs: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         let inst_name = |s: &str| CString::new(s).unwrap().as_ptr();
-        let lhs_val = try!(self.gen_expr(env, lhs));
-        let rhs_val = try!(self.gen_expr(env, rhs));
+        let lhs_val = try!(self.gen_expr(env, fv, lhs));
+        let rhs_val = try!(self.gen_expr(env, fv, rhs));
         match op {
             &BinOps::IAdd => {
                 Ok(LLVMBuildAdd(
@@ -393,13 +497,14 @@ impl<'a> CodeGen<'a> {
     unsafe fn gen_float_binop(
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
         op: &BinOps,
         lhs: &Closure,
         rhs: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         let inst_name = |s: &str| CString::new(s).unwrap().as_ptr();
-        let lhs_val = try!(self.gen_expr(env, lhs));
-        let rhs_val = try!(self.gen_expr(env, rhs));
+        let lhs_val = try!(self.gen_expr(env, fv, lhs));
+        let rhs_val = try!(self.gen_expr(env, fv, rhs));
         match op {
             &BinOps::FAdd => {
                 Ok(LLVMBuildFAdd(
@@ -458,12 +563,12 @@ impl<'a> CodeGen<'a> {
     ) -> CodeGenResult<LLVMValueRef> {
         let val = try!(self.lookup_var(env, name));
         // TODO
-        Ok(val)
-        // Ok(LLVMBuildLoad(
-        //     self.builder,
-        //     val,
-        //     CString::new("load").unwrap().as_ptr(),
-        // ))
+        // Ok(val)
+        Ok(LLVMBuildLoad(
+            self.builder,
+            val,
+            CString::new("load").unwrap().as_ptr(),
+        ))
     }
 
     pub unsafe fn gen_int(&mut self, i: i32) -> CodeGenResult<LLVMValueRef> {
@@ -482,7 +587,22 @@ impl Type {
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),
-            _ => panic!(),
+            &Type::Func(ref params_ty, ref ret_ty) => {
+                LLVMFunctionType(
+                    ret_ty.to_llvmty(),
+                    || -> *mut LLVMTypeRef {
+                        let mut param_llvm_types: Vec<LLVMTypeRef> = Vec::new();
+                        for param_ty in params_ty {
+                            param_llvm_types.push(param_ty.to_llvmty());
+                        }
+                        param_llvm_types.as_mut_slice().as_mut_ptr()
+                    }(),
+                    params_ty.len() as u32,
+                    0,
+                )
+            }
+
+            _ => panic!(format!("{:?}", self)),
         }
     }
 }

@@ -175,8 +175,6 @@ fn g(
                 *toplevel = toplevel_cp;
                 (&known_p, e1p)
             } else {
-                eprintln!("free variables(s) {:?} found in function {}", zs, x);
-                eprintln!("function {} cannot be directly applied in fact.", x);
                 let e1p = g(*expr, &env_p2, known, toplevel);
                 (known, e1p)
             };
@@ -192,8 +190,6 @@ fn g(
             });
             let e2p = g(*body, &env_p, known_p, toplevel);
             if fv(&e2p).contains(&x) {
-                println!("makecls here");
-                // Closure::Unit
                 Closure::MakeCls(
                     x.clone(),
                     t,
@@ -204,7 +200,6 @@ fn g(
                     Box::new(e2p),
                 )
             } else {
-                eprintln!("eliminating closure {}", x);
                 e2p
             }
         }

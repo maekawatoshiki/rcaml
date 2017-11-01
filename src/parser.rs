@@ -133,8 +133,8 @@ named!(expr_comp<NodeKind>,
                 do_parse!(
                     opt_spaces >> 
                     op: alt!(
-                        tag!("=") | tag!("<>") | tag!("==") | tag!("!=") |
-                        tag!("<") | tag!(">") | tag!("<=") | tag!(">=") 
+                        tag!("<>") | tag!("==") | tag!("!=") |
+                        tag!("<=") | tag!(">=") | tag!("<") | tag!(">") | tag!("=")
                         ) >>
                     opt_spaces >> 
                     rhs: expr_unary >> 

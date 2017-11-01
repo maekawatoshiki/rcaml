@@ -10,7 +10,7 @@ use std::ptr;
 use std::boxed::Box;
 use std::collections::{HashMap, hash_map, VecDeque};
 
-use node::{NodeKind, FuncDef, BinOps};
+use node::{NodeKind, FuncDef, BinOps, CompBinOps};
 use node;
 
 use closure::{Closure, Prog};
@@ -175,17 +175,13 @@ impl<'a> CodeGen<'a> {
         // let mut funcs = Vec::new();
 
         for Prog(funs, expr) in progs {
+            // TODO: consider how to impl poly ty
             let mut env = HashMap::new();
             for fun in funs {
                 try!(self.gen_fun(&mut env, &fun));
             }
-            match &expr {
-                // &NodeKind::LetFuncDef(ref funcdef, ref expr) => funcs.push(node.clone()),
-                _ => {
-                    try!(self.gen_expr(&env, &HashMap::new(), &expr));
-                    ()
-                }
-            }
+
+            try!(self.gen_expr(&env, &HashMap::new(), Some(main), &expr));
         }
 
         LLVMBuildRet(self.builder, try!(self.gen_int(0)));
@@ -236,16 +232,31 @@ impl<'a> CodeGen<'a> {
 
         for (i, &(ref param_name, ref param_ty)) in cls.formal_fv.iter().enumerate() {
             let param_val = LLVMGetParam(llvm_fun, i as u32);
-            let var = try!(self.declare_local_var(env, &param_name, &param_ty));
+            let var = try!(self.declare_local_var(
+                env,
+                Some(llvm_fun),
+                &param_name,
+                &param_ty,
+            ));
             LLVMBuildStore(self.builder, param_val, var);
         }
         for (i, &(ref param_name, ref param_ty)) in cls.params.iter().enumerate() {
             let param_val = LLVMGetParam(llvm_fun, i as u32);
-            let var = try!(self.declare_local_var(env, &param_name, &param_ty));
+            let var = try!(self.declare_local_var(
+                env,
+                Some(llvm_fun),
+                &param_name,
+                &param_ty,
+            ));
             LLVMBuildStore(self.builder, param_val, var);
         }
 
-        let ret_val = try!(self.gen_expr(env, &HashMap::new(), &*cls.body));
+        let ret_val = try!(self.gen_expr(
+            env,
+            &HashMap::new(),
+            Some(llvm_fun),
+            &*cls.body,
+        ));
         LLVMBuildRet(self.builder, ret_val);
 
         self.builder = tmp_builder;
@@ -256,11 +267,12 @@ impl<'a> CodeGen<'a> {
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
         closure: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         match closure {
             &Closure::LetExpr((ref name, ref ty), ref expr, ref body) => {
-                self.gen_letexpr(env, fv, name, ty, expr, body)
+                self.gen_letexpr(env, fv, cur_fun, name, ty, expr, body)
             }
             // LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
             // LetFuncExpr(FuncDef, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
@@ -272,12 +284,16 @@ impl<'a> CodeGen<'a> {
             // &NodeKind::LetFuncDef(ref funcdef, ref expr) => self.gen_letfuncdef(&*funcdef, &*expr),
 
             // Call(Box<NodeKind>, Vec<NodeKind>),
-            &Closure::AppCls(ref callee, ref args) => self.gen_call(env, fv, &*callee, &*args),
-            &Closure::AppDir(ref callee, ref args) => self.gen_call(env, fv, &*callee, &*args),
+            &Closure::AppCls(ref callee, ref args) => {
+                self.gen_call(env, fv, cur_fun, &*callee, &*args)
+            }
+            &Closure::AppDir(ref callee, ref args) => {
+                self.gen_call(env, fv, cur_fun, &*callee, &*args)
+            }
 
             // MakeCls(String, Type, Cls, Box<Closure>),
             &Closure::MakeCls(ref name, ref ty, ref cls, ref body) => {
-                self.gen_makecls(env, fv, &*name, &*ty, &*cls, &*body)
+                self.gen_makecls(env, fv, cur_fun, &*name, &*ty, &*cls, &*body)
             }
             // &NodeKind::Call(ref callee, ref args) => self.gen_call(&*callee, &*args),
 
@@ -286,10 +302,16 @@ impl<'a> CodeGen<'a> {
             //     self.gen_int_binop(op, &*lhs, &*rhs)
             // }
             &Closure::IntBinaryOp(ref op, ref lhs, ref rhs) => {
-                self.gen_int_binop(env, fv, &*op, &*lhs, &*rhs)
+                self.gen_int_binop(env, fv, cur_fun, &*op, &*lhs, &*rhs)
             }
             &Closure::FloatBinaryOp(ref op, ref lhs, ref rhs) => {
-                self.gen_float_binop(env, fv, &*op, &*lhs, &*rhs)
+                self.gen_float_binop(env, fv, cur_fun, &*op, &*lhs, &*rhs)
+            }
+            &Closure::CompBinaryOp(ref op, ref lhs, ref rhs) => {
+                self.gen_comp_binop(env, fv, cur_fun, &*op, &*lhs, &*rhs)
+            }
+            &Closure::If(ref cond, ref then, ref els) => {
+                self.gen_if_expr(env, fv, cur_fun, &*cond, &*then, &*els)
             }
             // &NodeKind:: FloatUnaryOp(UnaryOps, Box<NodeKind>)
             &Closure::Var(ref name) => self.gen_var_load(env, name),
@@ -303,12 +325,13 @@ impl<'a> CodeGen<'a> {
     unsafe fn declare_local_var(
         &mut self,
         env: &mut HashMap<String, LLVMValueRef>,
+        cur_fun: Option<LLVMValueRef>,
         name: &String,
         ty: &Type,
     ) -> CodeGenResult<LLVMValueRef> {
         let builder = LLVMCreateBuilderInContext(self.context);
-        // let entry_bb = LLVMGetEntryBasicBlock(self.llvm_main_fun.unwrap());
-        let entry_bb = LLVMGetInsertBlock(self.builder);
+
+        let entry_bb = LLVMGetEntryBasicBlock(cur_fun.unwrap());
         let first_inst = LLVMGetFirstInstruction(entry_bb);
         // let var is always declared at the first of entry block
         if first_inst == ptr::null_mut() {
@@ -329,16 +352,17 @@ impl<'a> CodeGen<'a> {
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
         name: &String,
         ty: &Type,
         expr: &Closure,
         body: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         let mut newenv = env.clone();
-        let var = try!(self.declare_local_var(&mut newenv, name, ty));
-        let llvm_expr_val = try!(self.gen_expr(env, fv, expr));
+        let var = try!(self.declare_local_var(&mut newenv, cur_fun, name, ty));
+        let llvm_expr_val = try!(self.gen_expr(env, fv, cur_fun, expr));
         LLVMBuildStore(self.builder, llvm_expr_val, var);
-        self.gen_expr(&newenv, fv, body)
+        self.gen_expr(&newenv, fv, cur_fun, body)
     }
 
     // pub unsafe fn gen_letdef(
@@ -381,20 +405,23 @@ impl<'a> CodeGen<'a> {
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
         name: &String,
         ty: &Type,
         cls: &closure::Cls,
         body: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
+        // TODO: correct impl
         let mut newfv = fv.clone();
         newfv.insert(cls.entry.clone(), cls.actual_fv.clone());
-        self.gen_expr(env, &newfv, body)
+        self.gen_expr(env, &newfv, cur_fun, body)
     }
 
     unsafe fn gen_call(
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
         callee: &Closure,
         args: &Vec<Closure>,
     ) -> CodeGenResult<LLVMValueRef> {
@@ -407,13 +434,13 @@ impl<'a> CodeGen<'a> {
         let mut args_val = Vec::new();
         // insert free variables
         if let Some(actual_fv) = fv.get(name) {
-            for x in actual_fv {
-                let llvm_arg = try!(self.gen_var_load(env, x));
+            for name in actual_fv {
+                let llvm_arg = try!(self.gen_var_load(env, name));
                 args_val.push(llvm_arg);
             }
         }
         for arg in args {
-            let llvm_arg = try!(self.gen_expr(env, fv, &arg));
+            let llvm_arg = try!(self.gen_expr(env, fv, cur_fun, &arg));
             args_val.push(llvm_arg);
         }
 
@@ -442,13 +469,14 @@ impl<'a> CodeGen<'a> {
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
         op: &BinOps,
         lhs: &Closure,
         rhs: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         let inst_name = |s: &str| CString::new(s).unwrap().as_ptr();
-        let lhs_val = try!(self.gen_expr(env, fv, lhs));
-        let rhs_val = try!(self.gen_expr(env, fv, rhs));
+        let lhs_val = try!(self.gen_expr(env, fv, cur_fun, lhs));
+        let rhs_val = try!(self.gen_expr(env, fv, cur_fun, rhs));
         match op {
             &BinOps::IAdd => {
                 Ok(LLVMBuildAdd(
@@ -498,13 +526,14 @@ impl<'a> CodeGen<'a> {
         &mut self,
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
         op: &BinOps,
         lhs: &Closure,
         rhs: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
         let inst_name = |s: &str| CString::new(s).unwrap().as_ptr();
-        let lhs_val = try!(self.gen_expr(env, fv, lhs));
-        let rhs_val = try!(self.gen_expr(env, fv, rhs));
+        let lhs_val = try!(self.gen_expr(env, fv, cur_fun, lhs));
+        let rhs_val = try!(self.gen_expr(env, fv, cur_fun, rhs));
         match op {
             &BinOps::FAdd => {
                 Ok(LLVMBuildFAdd(
@@ -540,6 +569,87 @@ impl<'a> CodeGen<'a> {
             }
             _ => panic!("not implemented"),
         }
+    }
+
+    unsafe fn gen_comp_binop(
+        &mut self,
+        env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
+        op: &CompBinOps,
+        lhs: &Closure,
+        rhs: &Closure,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let inst_name = |s: &str| CString::new(s).unwrap().as_ptr();
+        let lhs_val = try!(self.gen_expr(env, fv, cur_fun, lhs));
+        let rhs_val = try!(self.gen_expr(env, fv, cur_fun, rhs));
+        match op {
+            // TODO: more ops!
+            &CompBinOps::Le => {
+                Ok(LLVMBuildICmp(
+                    self.builder,
+                    llvm::LLVMIntPredicate::LLVMIntSLE,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("le"),
+                ))
+            }
+            _ => panic!("not implemented"),
+        }
+    }
+    unsafe fn gen_if_expr(
+        &mut self,
+        env: &HashMap<String, LLVMValueRef>,
+        fv: &HashMap<String, Vec<String>>,
+        cur_fun: Option<LLVMValueRef>,
+        cond: &Closure,
+        then: &Closure,
+        els: &Closure,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let cond_val = try!(self.gen_expr(env, fv, cur_fun, cond));
+
+        let fun = cur_fun.unwrap();
+        let bb_then = LLVMAppendBasicBlock(fun, CString::new("then").unwrap().as_ptr());
+        let bb_else = LLVMAppendBasicBlock(fun, CString::new("else").unwrap().as_ptr());
+        let bb_merge = LLVMAppendBasicBlock(fun, CString::new("merge").unwrap().as_ptr());
+
+        LLVMBuildCondBr(self.builder, cond_val, bb_then, bb_else);
+
+        LLVMPositionBuilderAtEnd(self.builder, bb_then);
+
+        let then_val = try!(self.gen_expr(env, fv, cur_fun, then));
+        // if cur_bb_has_no_terminator(self.builder) {
+        LLVMBuildBr(self.builder, bb_merge);
+        // }
+
+        LLVMPositionBuilderAtEnd(self.builder, bb_else);
+
+        let else_val = try!(self.gen_expr(env, fv, cur_fun, els));
+        // if cur_bb_has_no_terminator(self.builder) {
+        LLVMBuildBr(self.builder, bb_merge);
+        // }
+
+        LLVMPositionBuilderAtEnd(self.builder, bb_merge);
+
+        let phi = LLVMBuildPhi(
+            self.builder,
+            LLVMTypeOf(then_val),
+            CString::new("phi").unwrap().as_ptr(),
+        );
+        LLVMAddIncoming(
+            phi,
+            vec![then_val].as_mut_slice().as_mut_ptr(),
+            vec![bb_then].as_mut_slice().as_mut_ptr(),
+            1,
+        );
+        LLVMAddIncoming(
+            phi,
+            vec![else_val].as_mut_slice().as_mut_ptr(),
+            vec![bb_else].as_mut_slice().as_mut_ptr(),
+            1,
+        );
+
+        Ok(phi)
     }
 
     unsafe fn lookup_var(

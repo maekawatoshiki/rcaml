@@ -1,7 +1,7 @@
 use node::NodeKind;
 use node;
 use typing::Type;
-use node::BinOps;
+use node::{BinOps, CompBinOps};
 
 use std::collections::{HashMap, hash_map, HashSet};
 
@@ -23,9 +23,11 @@ pub enum Closure {
     Var(String),
     IntBinaryOp(BinOps, Box<Closure>, Box<Closure>),
     FloatBinaryOp(BinOps, Box<Closure>, Box<Closure>),
+    CompBinaryOp(CompBinOps, Box<Closure>, Box<Closure>),
     AppCls(Box<Closure>, Vec<Closure>),
     AppDir(Box<Closure>, Vec<Closure>),
     LetExpr((String, Type), Box<Closure>, Box<Closure>), // (name, ty), bound expr, body
+    If(Box<Closure>, Box<Closure>, Box<Closure>), // cond, then, else
     MakeCls(String, Type, Cls, Box<Closure>),
 }
 
@@ -64,7 +66,8 @@ fn fv(e: &Closure) -> HashSet<String> {
         Unit | Int(_) | Float(_) => HashSet::new(),
         // Neg(ref x) | FNeg(ref x) => build_set!(x),
         IntBinaryOp(_, ref x, ref y) |
-        FloatBinaryOp(_, ref x, ref y) => {
+        FloatBinaryOp(_, ref x, ref y) | 
+        CompBinaryOp(_, ref x , ref y) => {
             let mut set = HashSet::new();
             for e in fv(x).union(&fv(y)).collect::<Vec<&String>>() {
                 set.insert(e.clone());
@@ -72,12 +75,12 @@ fn fv(e: &Closure) -> HashSet<String> {
             set
         }
         // Get(ref x, ref y) => build_set!(x, y),
-        // IfComp(_, ref x, ref y, ref e1, ref e2) => {
-        //     let h = build_set!(x, y);
-        //     let s1 = invoke!(e1);
-        //     let s2 = invoke!(e2);
-        //     &(&h | &s1) | &s2
-        // }
+        If(ref c, ref t, ref e) => {
+            let c = fv(c);
+            let t = fv(t);
+            let e = fv(e);
+            &(&c | &t) | &e
+        }
         LetExpr((ref x, _), ref e1, ref e2) => {
             let s1 = fv(e1);
             let s2 = &fv(e2) - &build_set!(x);
@@ -139,6 +142,20 @@ fn g(
                 op,
                 Box::new(g(*lhs, env, known, toplevel)),
                 Box::new(g(*rhs, env, known, toplevel)),
+            )
+        }
+        NodeKind::CompBinaryOp(op, lhs, rhs) => {
+            Closure::CompBinaryOp(
+                op,
+                Box::new(g(*lhs, env, known, toplevel)),
+                Box::new(g(*rhs, env, known, toplevel)),
+            )
+        }
+        NodeKind::IfExpr(cond, then, els) => {
+            Closure::If(
+                Box::new(g(*cond, env, known, toplevel)),
+                Box::new(g(*then, env, known, toplevel)),
+                Box::new(g(*els, env, known, toplevel)),
             )
         }
         // LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body

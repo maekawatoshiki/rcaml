@@ -446,7 +446,7 @@ pub fn g(
             Ok(Type::Unit)
         }
         NodeKind::IfExpr(ref cond, ref then_, ref else_) => {
-            try!(unify(&try!(g(cond, env, tyenv, idgen)), &Type::Int, tyenv));
+            try!(unify(&try!(g(cond, env, tyenv, idgen)), &Type::Bool, tyenv));
             let t = try!(g(then_, env, tyenv, idgen));
             let e = try!(g(else_, env, tyenv, idgen));
             try!(unify(&t, &e, tyenv));

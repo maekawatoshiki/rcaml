@@ -71,10 +71,15 @@ fn main() {
                      let y = 1.11 in
                         print_float (x +. y) ;;
                  print_newline ()
-                 let fact x = 
-                    if x <= 1 then 1 
-                    else x * (fact (x - 1)) in 
-                 print_int (fact 10) ;;
+                 let fact x acc = 
+                    if x <= 1 then acc
+                    else fact (x - 1) (acc + x) in
+                 print_int (fact 100 1) ;;
+                 print_newline () ;;
+                 let fibo x = 
+                    if x <= 1 then 1
+                    else (fibo (x - 1)) + (fibo (x - 2)) in
+                 print_int (fibo 10) ;;
                  print_newline ()";
         parser::parse_module_items(e);
     }

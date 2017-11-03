@@ -585,6 +585,15 @@ impl<'a> CodeGen<'a> {
         let rhs_val = try!(self.gen_expr(env, fv, cur_fun, rhs));
         match op {
             // TODO: more ops!
+            &CompBinOps::Lt => {
+                Ok(LLVMBuildICmp(
+                    self.builder,
+                    llvm::LLVMIntPredicate::LLVMIntSLT,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("lt"),
+                ))
+            }
             &CompBinOps::Le => {
                 Ok(LLVMBuildICmp(
                     self.builder,
@@ -592,6 +601,24 @@ impl<'a> CodeGen<'a> {
                     lhs_val,
                     rhs_val,
                     inst_name("le"),
+                ))
+            }
+            &CompBinOps::Gt => {
+                Ok(LLVMBuildICmp(
+                    self.builder,
+                    llvm::LLVMIntPredicate::LLVMIntSGT,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("gt"),
+                ))
+            }
+            &CompBinOps::Ge => {
+                Ok(LLVMBuildICmp(
+                    self.builder,
+                    llvm::LLVMIntPredicate::LLVMIntSGE,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("ge"),
                 ))
             }
             _ => panic!("not implemented"),
@@ -625,6 +652,14 @@ impl<'a> CodeGen<'a> {
         LLVMPositionBuilderAtEnd(self.builder, bb_else);
 
         let else_val = try!(self.gen_expr(env, fv, cur_fun, els));
+        LLVMSetTailCall(
+            else_val,
+            match els {
+                &Closure::AppCls(_, _) |
+                &Closure::AppDir(_, _) => 1,
+                _ => 0,
+            },
+        );
         // if cur_bb_has_no_terminator(self.builder) {
         LLVMBuildBr(self.builder, bb_merge);
         // }

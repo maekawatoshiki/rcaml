@@ -109,6 +109,25 @@ named!(expr_if<NodeKind>, alt_complete!(
         e3: expr >>
         (NodeKind::IfExpr(Box::new(e1), Box::new(e2), Box::new(e3)))
     )
+    | expr_comma
+    )
+);
+
+named!(expr_comma<NodeKind>, alt_complete!(
+    do_parse!(
+        init: expr_add_sub >> 
+        res:  fold_many1!(
+                do_parse!(
+                    opt_spaces >> 
+                    tag!(",") >> 
+                    opt_spaces >> 
+                    rhs: expr_add_sub >> 
+                    (rhs)
+                ),
+                vec![init],
+                |mut acc: Vec<NodeKind>, e| { acc.push(e); acc }
+        ) >> (NodeKind::Tuple(res))
+    )
     | expr_add_sub
     )
 );
@@ -174,20 +193,6 @@ named!(expr_comp<NodeKind>,
                     NodeKind::CompBinaryOp(node::str_to_comp_binop(str::from_utf8(op).unwrap()), Box::new(n1), Box::new(n2)) 
                 }
         ) >> (res)
-    )
-);
-
-named!(expr_func_call<NodeKind>,
-    do_parse!(
-        p: expr_prim >>
-        args:   fold_many0!(
-                expr,
-                Vec::new(),
-                |mut a: Vec<NodeKind>, arg: NodeKind| {
-                    a.push(arg);
-                    a
-                }
-        ) >> (if args.len() == 0 { p } else { NodeKind::Call(Box::new(p), args) })
     )
 );
 

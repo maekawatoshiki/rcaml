@@ -21,6 +21,7 @@ pub enum Closure {
     Int(i32),
     Float(OrderedFloat<f64>),
     Var(String),
+    Tuple(Vec<Closure>),
     IntBinaryOp(BinOps, Box<Closure>, Box<Closure>),
     FloatBinaryOp(BinOps, Box<Closure>, Box<Closure>),
     CompBinaryOp(CompBinOps, Box<Closure>, Box<Closure>),
@@ -66,8 +67,8 @@ fn fv(e: &Closure) -> HashSet<String> {
         Unit | Int(_) | Float(_) => HashSet::new(),
         // Neg(ref x) | FNeg(ref x) => build_set!(x),
         IntBinaryOp(_, ref x, ref y) |
-        FloatBinaryOp(_, ref x, ref y) | 
-        CompBinaryOp(_, ref x , ref y) => {
+        FloatBinaryOp(_, ref x, ref y) |
+        CompBinaryOp(_, ref x, ref y) => {
             let mut set = HashSet::new();
             for e in fv(x).union(&fv(y)).collect::<Vec<&String>>() {
                 set.insert(e.clone());
@@ -95,12 +96,18 @@ fn fv(e: &Closure) -> HashSet<String> {
                 },
                 ref e) => &(&ys.iter().cloned().collect() | &fv(e)) - &build_set!(x),
         AppCls(ref x, ref args) => {
-            &fv(x) | &seq!(args).iter().map(|v| (*v).clone()).collect::<HashSet<_>>()
+            &fv(x) |
+                &seq!(args)
+                    .iter()
+                    .map(|v| (*v).clone())
+                    .collect::<HashSet<_>>()
         }
-        AppDir(_, ref xs)
-        // Tuple(ref xs)
-        => {
-            seq!(xs).iter().map(|y| (*y).clone()).collect::<HashSet<_>>()
+        AppDir(_, ref xs) |
+        Tuple(ref xs) => {
+            seq!(xs)
+                .iter()
+                .map(|y| (*y).clone())
+                .collect::<HashSet<_>>()
         }
         // LetTuple(ref xs, ref y, ref e)
         // => {
@@ -127,9 +134,11 @@ fn g(
     }};
     match node {
         NodeKind::Unit => Closure::Unit,
+        NodeKind::Bool(b) => Closure::Bool(b),
         NodeKind::Int(i) => Closure::Int(i),
         NodeKind::Float(f) => Closure::Float(OrderedFloat::from(f)),
         NodeKind::Ident(name) => Closure::Var(name),
+        NodeKind::Tuple(es) => Closure::Tuple(seq!(es)),
         NodeKind::IntBinaryOp(op, lhs, rhs) => {
             Closure::IntBinaryOp(
                 op,

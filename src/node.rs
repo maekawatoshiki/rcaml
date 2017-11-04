@@ -8,6 +8,7 @@ pub enum NodeKind {
     Int(i32),
     Float(f64),
     Ident(String),
+    Tuple(Vec<NodeKind>),
     Call(Box<NodeKind>, Vec<NodeKind>),
     FuncDef((String, typing::Type), Vec<(String, typing::Type)>), // name, params
     LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body

@@ -13,6 +13,7 @@ pub enum Type {
     Int,
     Float,
     Char,
+    Tuple(Vec<Type>),
     Func(Vec<Type>, Box<Type>), // (param types, return type, is type inference complete?)
     Var(usize), // id
 }
@@ -29,6 +30,16 @@ impl Type {
             &Type::Char => "char".to_string(),
             &Type::Int => "int".to_string(),
             &Type::Float => "float".to_string(),
+            &Type::Tuple(ref et) => {
+                format!(
+                    "({})",
+                    et.into_iter()
+                        .fold("".to_string(), |acc, t| {
+                            acc + t.to_string_sub(i, m).as_str() + " * "
+                        })
+                        .trim_right_matches(" * ")
+                )
+            }
             &Type::Func(ref param_tys, ref ret_ty) => {
                 macro_rules! name { ($id:expr) => ( format!("\'{}", m.entry($id).or_insert_with(|| { *i += 1; *i }).clone()) ) };
                 format!(
@@ -80,13 +91,13 @@ pub enum TypeError {
 }
 
 fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
-    macro_rules! deref_typ_list {
-        ($list:expr) => ($list.iter().map(|x| deref_ty(x, tyenv))
+    macro_rules! deref_ty_seq {
+        ($seq:expr) => ($seq.iter().map(|x| deref_ty(x, tyenv))
                                   .collect::<Vec<_>>());
     }
     match *ty {
-        Type::Func(ref p, ref r) => Type::Func(deref_typ_list!(p), Box::new(deref_ty(r, tyenv))),
-        // Type::Tuple(ref ts) => Type::Tuple(deref_ty_list!(ts)),
+        Type::Func(ref p, ref r) => Type::Func(deref_ty_seq!(p), Box::new(deref_ty(r, tyenv))),
+        Type::Tuple(ref ts) => Type::Tuple(deref_ty_seq!(ts)),
         // Type::Array(ref t) => Type::Array(Box::new(deref_ty(t, tyenv))),
         Type::Var(ref n) => {
             if let Some(t) = tyenv.get(n) {
@@ -101,7 +112,7 @@ fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
 }
 
 fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
-    macro_rules! apply_deref {
+    macro_rules! deref_seq {
         ($ary:expr) => ($ary.iter().map(|x| deref_term(x, tyenv)).collect::<Vec<_>>());
     }
     match *node {
@@ -126,8 +137,9 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
                 Box::new(deref_term(&**rhs, tyenv)),
             )
         }
+        NodeKind::Tuple(ref es) => NodeKind::Tuple(deref_seq!(es)),
         NodeKind::Call(ref e, ref args) => {
-            NodeKind::Call(Box::new(deref_term(e, tyenv)), apply_deref!(args))
+            NodeKind::Call(Box::new(deref_term(e, tyenv)), deref_seq!(args))
         }
         NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
             NodeKind::LetExpr(
@@ -188,7 +200,7 @@ fn occur(r1: usize, ty: &Type) -> bool {
     }
     match *ty {
         Type::Func(ref t2s, ref t2) => occur_list!(t2s) || occur(r1, t2),
-        // Type::Tuple(ref t2s) => occur_list!(t2s),
+        Type::Tuple(ref t2s) => occur_list!(t2s),
         // Type::Array(ref t2) => occur(r1, t2),
         Type::Var(r2) => r1 == r2,
         _ => false,
@@ -212,6 +224,15 @@ pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(
                     try!(unify(a, b, tyenv));
                 }
                 unify(t1r, t2r, tyenv)
+            }
+            (&Type::Tuple(ref t1e), &Type::Tuple(ref t2e)) => {
+                if t1e.len() != t2e.len() {
+                    return Err(TypeError::Unify(t1.clone(), t2.clone()));
+                }
+                for (a, b) in t1e.iter().zip(t2e.iter()) {
+                    try!(unify(a, b, tyenv));
+                }
+                Ok(())
             }
             (&Type::Var(i1), &Type::Var(i2)) if i1 == i2 => Ok(()),
             (&Type::Var(ref i1), _) => {
@@ -243,6 +264,7 @@ fn subst(ty: Type, tyenv: &mut HashMap<usize, Type>, map: HashMap<usize, Type>) 
     match ty {
         Type::Unit | Type::Bool | Type::Int | Type::Float | Type::Char => ty,
         Type::Func(params, ret) => Type::Func(seq!(params), Box::new(subst(*ret, tyenv, map))),
+        Type::Tuple(es) => Type::Tuple(seq!(es)),
         Type::Var(id) => {
             if let Some(t) = map.get(&id).cloned() {
                 t
@@ -286,6 +308,7 @@ fn unwrap_var(ty: Type, tyenv: &mut HashMap<usize, Type>, freevars: &mut Vec<Typ
             seq!(params);
             unwrap_var(*ret, tyenv, freevars)
         }
+        Type::Tuple(es) => seq!(es),
         Type::Var(id) => {
             freevars.push(ty.clone());
         }
@@ -364,6 +387,7 @@ pub fn g(
                 panic!("TODO: implement")
             }
         }
+        NodeKind::Tuple(ref es) => Ok(Type::Tuple(g_seq!(es))),
         NodeKind::IntBinaryOp(_, ref lhs, ref rhs) => {
             try!(unify(&try!(g(lhs, env, tyenv, idgen)), &Type::Int, tyenv));
             try!(unify(&try!(g(rhs, env, tyenv, idgen)), &Type::Int, tyenv));

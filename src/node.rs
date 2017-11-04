@@ -63,6 +63,7 @@ pub fn str_to_binop(opstr: &str) -> (BinOps, bool) {
         "*." => (BinOps::FMul, false),
         "/" => (BinOps::IDiv, true),
         "/." => (BinOps::FDiv, false),
+        "mod" => (BinOps::IMod, true),
         _ => (BinOps::IAdd, true),
     }
 }

@@ -81,6 +81,10 @@ fn main() {
                     else fact (x - 1) (acc + x) in
                  print_int (fact 100 1) ;;
                  print_newline () ;;
+                 let gcd a b =
+                     if b = 0 then a else gcd b (a mod b) in
+                 print_int (gcd 55 200) ;;
+                 print_newline () ;;
                  let fibo x = 
                     if x <= 1 then 1
                     else (fibo (x - 1)) + (fibo (x - 2)) in

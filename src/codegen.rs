@@ -585,6 +585,24 @@ impl<'a> CodeGen<'a> {
         let rhs_val = try!(self.gen_expr(env, fv, cur_fun, rhs));
         match op {
             // TODO: more ops!
+            &CompBinOps::SEq => {
+                Ok(LLVMBuildICmp(
+                    self.builder,
+                    llvm::LLVMIntPredicate::LLVMIntEQ,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("eq"),
+                ))
+            }
+            &CompBinOps::SNe => {
+                Ok(LLVMBuildICmp(
+                    self.builder,
+                    llvm::LLVMIntPredicate::LLVMIntNE,
+                    lhs_val,
+                    rhs_val,
+                    inst_name("ne"),
+                ))
+            }
             &CompBinOps::Lt => {
                 Ok(LLVMBuildICmp(
                     self.builder,

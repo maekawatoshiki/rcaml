@@ -191,7 +191,7 @@ named!(expr_mul_div<NodeKind>,
         res:  fold_many0!(
                 do_parse!(
                     opt_spaces >> 
-                    op: alt!(tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
+                    op: alt!(tag!("mod") | tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
                     opt_spaces >> 
                     rhs: expr_comp >> 
                     (op, rhs)
@@ -293,7 +293,7 @@ named!(float<NodeKind>,
 fn is_ident(x: &[u8]) -> bool {
     let keywords = vec![&b"let"[..], &b"rec"[..], &b"in"[..], &b"true"[..],
                         &b"false"[..], &b"if"[..], &b"then"[..], &b"else"[..],
-                        &b"Array.create"[..], &b"Array.make"[..]];
+                        &b"Array.create"[..], &b"Array.make"[..], &b"mod"[..]];
     if x.len() == 0 || keywords.contains(&x) {
         return false;
     }

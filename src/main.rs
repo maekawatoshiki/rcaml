@@ -36,7 +36,6 @@ fn main() {
         parser::parse_and_show_simple_expr("let f x = x + 1 in f (1 + 2)");
 
         parser::parse_and_show_module_item("let f x = x * 2;;");
-
         parser::parse_and_show_module_item("let t = 1, 2 in t");
 
         parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
@@ -53,12 +52,14 @@ fn main() {
         );
         parser::parse_and_infer_type("let id x = x in let f y = id (y id) in let f = f in f");
         parser::parse_and_infer_type("let t = 1, 2.3, true in t");
+        parser::parse_and_infer_type("let (a, b, c) = 1, 2.3, false in a + b + c");
 
         parser::parse_and_infer_type_and_closure_conv("let f x = let g y = x + y in g 3 in f 1");
         parser::parse_and_infer_type_and_closure_conv(
             "let fact x = if x = 1 then 1 else x * (fact (x - 1)) in print_int (fact 10)",
         );
         parser::parse_and_infer_type_and_closure_conv("let t = 1, 2.3, false in t");
+        parser::parse_and_infer_type_and_closure_conv("let (a, b, c) = 1, 2.3, false in a + b + c");
 
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";

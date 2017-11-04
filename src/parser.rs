@@ -49,6 +49,20 @@ named!(funcdef<NodeKind>,
     )
 );
 
+named!(pat<Vec<(String, Type)>>, 
+    do_parse!(
+        init: ident_s >>
+        res: fold_many1!(
+            ws!(preceded!(tag!(","), ident_s)),
+            vec![(init, Type::Var(0))],
+            |mut acc: Vec<(String, Type)>, x| {
+                acc.push((x, Type::Var(0)));
+                acc
+            }
+        ) >> (res)
+    )
+);
+
 named!(expr<NodeKind>, 
     alt!(
             expr_let
@@ -56,7 +70,7 @@ named!(expr<NodeKind>,
     )
 );
 
-named!(expr_let<NodeKind>,
+named!(expr_let<NodeKind>, alt_complete!(
     do_parse!(
         tag!("let") >>
         spaces >> 
@@ -80,6 +94,24 @@ named!(expr_let<NodeKind>,
                                                ),
             _                               => panic!()
         })
+    ) |
+    do_parse!(
+        tag!("let") >>
+        opt_spaces >> 
+        tag!("(") >>
+        opt_spaces >> 
+        p: pat >> 
+        opt_spaces >> 
+        tag!(")") >>
+        opt_spaces >> 
+        ws!(tag!("=")) >>
+        exp: expr >>
+        spaces >>
+        tag!("in") >> 
+        spaces >> 
+        body: expr >>
+        (NodeKind::LetTupleExpr(p, Box::new(exp), Box::new(body)))
+    )
     )
 );
 
@@ -271,6 +303,10 @@ fn is_not_ident_u8(x: u8) -> bool {
     !((b'0' <= x && x <= b'9') || (b'A' <= x && x <= b'Z') || (b'a' <= x && x <= b'z') || x == b'_')
 }
 
+named!(ident_s<String>, do_parse!(
+    i: verify!(take_till!(is_not_ident_u8), is_ident) >>
+    (String::from_utf8(i.to_vec()).unwrap())
+));
 named!(ident<NodeKind>, do_parse!(
     i: verify!(take_till!(is_not_ident_u8), is_ident) >>
     (NodeKind::Ident(String::from_utf8(i.to_vec()).unwrap()))
@@ -344,15 +380,6 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             let body = uniquify(*body, idgen);
             NodeKind::LetExpr((name, ty), Box::new(expr), Box::new(body))
         }
-        NodeKind::LetDef((name, ty), expr) => {
-            let ty = if let Type::Var(_) = ty {
-                idgen.get_type()
-            } else {
-                ty
-            };
-            let expr = uniquify(*expr, idgen);
-            NodeKind::LetDef((name, ty), Box::new(expr))
-        }
         NodeKind::LetFuncExpr(node::FuncDef {
                                   name: (name, t),
                                   mut params,
@@ -383,6 +410,27 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
                 expr,
                 body,
             )
+        }
+        NodeKind::LetTupleExpr(mut pat, expr, body) => {
+            for i in 0..pat.len() {
+                if let Type::Var(_) = pat[i].1 {
+                    pat[i].1 = idgen.get_type();
+                }
+            }
+            NodeKind::LetTupleExpr(
+                pat,
+                Box::new(uniquify(*expr, idgen)),
+                Box::new(uniquify(*body, idgen)),
+            )
+        }
+        NodeKind::LetDef((name, ty), expr) => {
+            let ty = if let Type::Var(_) = ty {
+                idgen.get_type()
+            } else {
+                ty
+            };
+            let expr = uniquify(*expr, idgen);
+            NodeKind::LetDef((name, ty), Box::new(expr))
         }
         NodeKind::LetFuncDef(node::FuncDef {
                                  name: (name, t),

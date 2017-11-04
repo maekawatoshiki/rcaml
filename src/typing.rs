@@ -148,12 +148,6 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
                 Box::new(deref_term(&**body, tyenv)),
             )
         }
-        NodeKind::LetDef((ref name, ref ty), ref expr) => {
-            NodeKind::LetDef(
-                (name.clone(), deref_ty(ty, tyenv)),
-                Box::new(deref_term(&**expr, tyenv)),
-            )
-        }
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
             let (ref name, ref ty) = funcdef.name;
             let params = &funcdef.params;
@@ -167,6 +161,22 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
                 },
                 Box::new(deref_term(expr, tyenv)),
                 Box::new(deref_term(body, tyenv)),
+            )
+        }
+        NodeKind::LetTupleExpr(ref es, ref expr, ref body) => {
+            let es = es.iter()
+                .map(|&(ref e, ref t)| (e.clone(), deref_ty(t, tyenv)))
+                .collect::<Vec<_>>();
+            NodeKind::LetTupleExpr(
+                es,
+                Box::new(deref_term(expr, tyenv)),
+                Box::new(deref_term(body, tyenv)),
+            )
+        }
+        NodeKind::LetDef((ref name, ref ty), ref expr) => {
+            NodeKind::LetDef(
+                (name.clone(), deref_ty(ty, tyenv)),
+                Box::new(deref_term(&**expr, tyenv)),
             )
         }
         NodeKind::LetFuncDef(ref funcdef, ref expr) => {
@@ -438,6 +448,20 @@ pub fn g(
             try!(unify(&ty, &newty, tyenv));
             // println!("complete functy: {:?}", newty);
             newenv.insert(name.clone(), generalize(newty, env, tyenv));
+            g(body, &newenv, tyenv, idgen)
+        }
+        NodeKind::LetTupleExpr(ref es, ref expr, ref body) => {
+            try!(unify(
+                &try!(g(expr, &env, tyenv, idgen)),
+                &Type::Tuple(
+                    es.iter().map(|e| e.1.clone()).collect::<Vec<_>>(),
+                ),
+                tyenv,
+            ));
+            let mut newenv = env.clone();
+            for &(ref x, ref t) in es.iter() {
+                newenv.insert(x.to_string(), TypeScheme::new(vec![], t.clone()));
+            }
             g(body, &newenv, tyenv, idgen)
         }
         NodeKind::LetDef((ref name, ref ty), ref expr) => {

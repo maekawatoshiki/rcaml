@@ -28,6 +28,7 @@ pub enum Closure {
     AppCls(Box<Closure>, Vec<Closure>),
     AppDir(Box<Closure>, Vec<Closure>),
     LetExpr((String, Type), Box<Closure>, Box<Closure>), // (name, ty), bound expr, body
+    LetTupleExpr(Vec<(String, Type)>, Box<Closure>, Box<Closure>), // tuples, bound expr, body
     If(Box<Closure>, Box<Closure>, Box<Closure>), // cond, then, else
     MakeCls(String, Type, Cls, Box<Closure>),
 }
@@ -109,11 +110,10 @@ fn fv(e: &Closure) -> HashSet<String> {
                 .map(|y| (*y).clone())
                 .collect::<HashSet<_>>()
         }
-        // LetTuple(ref xs, ref y, ref e)
-        // => {
-        //     let tmp: HashSet<String> = xs.iter().map(|x| x.0.clone()).collect(); // S.of_list (List.map fst xs)
-        //     &build_set!(y) | &(&invoke!(e) - &tmp)
-        // }
+        LetTupleExpr(ref es, ref expr, ref body) => {
+            let tmp: HashSet<String> = es.iter().map(|e| e.0.clone()).collect();
+            &fv(expr) | &(&fv(body) - &tmp)
+        }
         // Put(ref x, ref y, ref z) => build_set!(x, y, z),
         _ => panic!(format!("{:?}", e)),
     }
@@ -228,6 +228,17 @@ fn g(
             } else {
                 e2p
             }
+        }
+        NodeKind::LetTupleExpr(es, expr, body) => {
+            let mut newenv = env.clone();
+            for &(ref x, ref t) in es.iter() {
+                newenv.insert(x.clone(), t.clone());
+            }
+            Closure::LetTupleExpr(
+                es,
+                Box::new(g(*expr, &newenv, known, toplevel)),
+                Box::new(g(*body, &newenv, known, toplevel)),
+            )
         }
 
         NodeKind::Call(callee, args) => {

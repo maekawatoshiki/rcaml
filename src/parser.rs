@@ -49,6 +49,13 @@ named!(funcdef<NodeKind>,
     )
 );
 
+named!(expr<NodeKind>, 
+    alt!(
+            expr_let
+        |   expr_semicolon
+    )
+);
+
 named!(expr_let<NodeKind>,
     do_parse!(
         tag!("let") >>
@@ -76,11 +83,33 @@ named!(expr_let<NodeKind>,
     )
 );
 
-named!(expr<NodeKind>, 
-    alt!(
-            expr_let
-        |   expr_if
-        |   expr_add_sub
+named!(expr_semicolon<NodeKind>, alt_complete!(
+    do_parse!(
+        e1: expr_if >> 
+        tag!(";") >>
+        e2: expr >> 
+        (NodeKind::LetExpr(("_".to_string(), Type::Unit), Box::new(e1), Box::new(e2)))
+    )
+    |   expr_if
+    )
+);
+
+named!(expr_if<NodeKind>, alt_complete!(
+    do_parse!(
+        tag!("if") >>
+        spaces >> 
+        e1: expr >>
+        spaces >> 
+        tag!("then") >>
+        spaces >> 
+        e2: expr >>
+        spaces >> 
+        tag!("else") >>
+        spaces >> 
+        e3: expr >>
+        (NodeKind::IfExpr(Box::new(e1), Box::new(e2), Box::new(e3)))
+    )
+    | expr_add_sub
     )
 );
 
@@ -206,22 +235,6 @@ named!(expr_prim<NodeKind>,
     )
 );
 
-named!(expr_if<NodeKind>,
-    do_parse!(
-        tag!("if") >>
-        spaces >> 
-        e1: expr >>
-        spaces >> 
-        tag!("then") >>
-        spaces >> 
-        e2: expr >>
-        spaces >> 
-        tag!("else") >>
-        spaces >> 
-        e3: expr >>
-        (NodeKind::IfExpr(Box::new(e1), Box::new(e2), Box::new(e3)))
-    )
-);
 
 named!(integer<NodeKind>, 
     do_parse!(

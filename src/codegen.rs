@@ -19,8 +19,6 @@ use closure;
 use typing::{Type, TypeScheme};
 use typing;
 
-use parser::EXTENV;
-
 #[derive(Eq, PartialEq, Hash)]
 pub struct ExtFunc {
     llvm_val: LLVMValueRef,

@@ -74,6 +74,7 @@ named!(expr_let<NodeKind>, alt_complete!(
     do_parse!(
         tag!("let") >>
         spaces >> 
+        ws!(many0!(tag!("rec"))) >> // TODO: do not ignore rec
         name: alt!(funcdef | ident) >> 
         ws!(tag!("=")) >>
         exp: expr >>
@@ -116,12 +117,12 @@ named!(expr_let<NodeKind>, alt_complete!(
 );
 
 named!(expr_semicolon<NodeKind>, alt_complete!(
-    do_parse!(
+    ws!(do_parse!(
         e1: expr_if >> 
         tag!(";") >>
         e2: expr >> 
         (NodeKind::LetExpr(("_".to_string(), Type::Unit), Box::new(e1), Box::new(e2)))
-    )
+    ))
     |   expr_if
     )
 );

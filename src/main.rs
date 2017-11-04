@@ -4,6 +4,12 @@ use rcaml::parser;
 extern crate clap;
 use clap::{Arg, App};
 
+extern crate ansi_term;
+use self::ansi_term::{Colour, Style};
+
+use std::fs::OpenOptions;
+use std::io::prelude::*;
+
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() {
@@ -24,7 +30,22 @@ fn main() {
         println!("rcaml {}", VERSION_STR);
         return;
     } else if let Some(filename) = app.value_of("FILE") {
-        println!("input filename: {}", filename);
+        let mut file = match OpenOptions::new().read(true).open(filename.to_string()) {
+            Ok(ok) => ok,
+            Err(_) => {
+                println!(
+                    "{} not found such file '{}'",
+                    Colour::Red.bold().paint("error:"),
+                    Style::new().underline().paint(filename)
+                );
+                ::std::process::exit(0)
+            } 
+        };
+        let mut file_body = "".to_string();
+        file.read_to_string(&mut file_body).ok().expect(
+            "error while reading file",
+        );
+        parser::parse_module_items(file_body.trim());
     } else {
         parser::parse_and_show_simple_expr("5 / a3 + 11 * 10");
         parser::parse_and_show_simple_expr("5.2 /. 0.3");

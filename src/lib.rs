@@ -1,3 +1,4 @@
+#[macro_use]
 pub mod parser;
 pub mod node;
 pub mod typing;

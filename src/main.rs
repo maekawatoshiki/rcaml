@@ -7,10 +7,47 @@ use clap::{Arg, App};
 extern crate ansi_term;
 use self::ansi_term::{Colour, Style};
 
+extern crate nom;
+
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
 const VERSION_STR: &'static str = env!("CARGO_PKG_VERSION");
+
+pub fn run(e: &str) {
+    use rcaml::codegen;
+    use rcaml::typing;
+    use rcaml::id;
+    use rcaml::closure;
+    use std::collections::HashMap;
+    use nom::IResult;
+
+    let mut idgen = id::IdGen::new();
+    let mut tyenv = HashMap::new();
+    let mut progs = Vec::new();
+    let e = parser::remove_comments(e.as_bytes());
+    let mut code = e.as_str();
+
+    while code.len() > 0 {
+        match parser::module_item(code.as_bytes()) {
+            IResult::Done(remain, node) => {
+                let uniquified = parser::uniquify(node, &mut idgen);
+                let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
+                let closured = closure::f(infered);
+                progs.push(closured);
+                code = parser::to_str(remain);
+            }
+            IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}", needed)),
+            IResult::Error(err) => panic!(format!("error: {:?}", err)),
+        }
+    }
+
+    unsafe {
+        let mut codegen = codegen::CodeGen::new(&mut tyenv);
+        codegen.gen(false, false, progs.clone());
+        codegen.run_module()
+    }
+}
 
 fn main() {
     let app = App::new("rcaml")
@@ -45,7 +82,7 @@ fn main() {
         file.read_to_string(&mut file_body).ok().expect(
             "error while reading file",
         );
-        parser::parse_module_items(file_body.trim());
+        run(file_body.trim());
     } else {
         parser::parse_and_show_simple_expr("5 / a3 + 11 * 10");
         parser::parse_and_show_simple_expr("5.2 /. 0.3");

@@ -16,25 +16,51 @@ use std::boxed::Box;
 
 // syntax reference: https://caml.inria.fr/pub/docs/manual-ocaml/language.html
 
-fn to_str(slice: &[u8]) -> &str {
+pub fn to_str(slice: &[u8]) -> &str {
     str::from_utf8(slice).unwrap()
 }
 
-named!(comment<()>, do_parse!(
-    tag!("(*") >>
-    take_until!("*)") >> ()
-));
+pub fn remove_comments(s: &[u8]) -> String {
+    let mut level = 0;
+    let mut pos = 0;
+    let mut ret = "".to_string();
+    let len = s.len();
+    while pos < len {
+        if pos < len - 1 && s[pos..(pos + 2)] == [b'(', b'*'] {
+            pos += 2;
+            level += 1;
+            continue;
+        }
+        if pos < len - 1 && s[pos..(pos + 2)] == [b'*', b')'] {
+            pos += 2;
+            if level <= 0 {
+                panic!("not found corresponding \"(*\"")
+            }
+            level -= 1;
+            continue;
+        }
+        if level == 0 {
+            ret.push(s[pos] as char);
+        }
+        pos += 1;
+    }
+    if level != 0 {
+        panic!("comments are not balanced")
+    }
+    ret
+}
+
 
 named!(whitespace<()>, do_parse!(
     one_of!(" \t\n\r") >> ()
 ));
 
 named!(opt_spaces<()>, do_parse!(
-    many0!(alt!(whitespace | comment)) >> ()
+    many0!(whitespace) >> ()
 ));
 
 named!(spaces<()>, do_parse!(
-    many1!(alt!(whitespace | comment)) >> ()
+    many1!(whitespace) >> ()
 ));
 
 named!(funcdef<NodeKind>, 
@@ -178,7 +204,7 @@ named!(expr_add_sub<NodeKind>,
                 ),
                 init,
                 |n1, (op, n2): (&[u8], NodeKind)| {
-                    let (op, is_int) = node::str_to_binop(str::from_utf8(op).unwrap());
+                    let (op, is_int) = node::str_to_binop(to_str(op));
                     if is_int { NodeKind::IntBinaryOp(op, Box::new(n1), Box::new(n2)) } 
                     else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
                 }
@@ -199,7 +225,7 @@ named!(expr_mul_div<NodeKind>,
                 ),
                 init,
                 |n1, (op, n2): (&[u8], NodeKind)| {
-                    let (op, is_int) = node::str_to_binop(str::from_utf8(op).unwrap());
+                    let (op, is_int) = node::str_to_binop(to_str(op));
                     if is_int { NodeKind::IntBinaryOp(op, Box::new(n1), Box::new(n2)) } 
                     else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
                 }
@@ -334,7 +360,8 @@ named!(opt_dscolon<()>, do_parse!(
     many0!(tag!(";;")) >> ()
 ));
 
-named!(module_item<NodeKind>,
+#[macro_export]
+named!(pub module_item<NodeKind>,
     do_parse!(
         ws!(opt_dscolon) >> 
         i: alt!(expr | definition) >> 
@@ -523,7 +550,8 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
     let mut idgen = id::IdGen::new();
     let mut tyenv = HashMap::new();
     let mut progs = Vec::new();
-    let mut code = e;
+    let e = remove_comments(e.as_bytes());
+    let mut code = e.as_str();
 
     println!("{}", Style::new().underline().bold().paint(format!("expression:\t{}", code)));
 
@@ -545,9 +573,37 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
 
     unsafe {
         let mut codegen = codegen::CodeGen::new(&mut tyenv);
-        codegen.gen(progs.clone());
+        codegen.gen(true, true, progs.clone());
     }
     progs
+}
+
+pub fn do_parse_typing_closure(e: &str) -> (Vec<Prog>, HashMap<usize, Type>) {
+    use typing;
+    use id;
+    use closure;
+
+    let mut idgen = id::IdGen::new();
+    let mut tyenv = HashMap::new();
+    let mut progs = Vec::new();
+    let e = remove_comments(e.as_bytes());
+    let mut code = e.as_str();
+
+    while code.len() > 0 {
+        match module_item(code.as_bytes()) {
+            IResult::Done(remain, node) => {
+                let uniquified = uniquify(node, &mut idgen);
+                let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
+                let closured = closure::f(infered);
+                progs.push(closured);
+                code = str::from_utf8(remain).unwrap();
+            }
+            IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}", needed)),
+            IResult::Error(err) => panic!(format!("error: {:?}", err)),
+        }
+    }
+
+    (progs, tyenv)
 }
 
 pub fn parse_and_infer_type(e: &str) {

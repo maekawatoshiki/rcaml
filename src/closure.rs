@@ -3,7 +3,7 @@ use node;
 use typing::Type;
 use node::{BinOps, CompBinOps};
 
-use std::collections::{HashMap, hash_map, HashSet};
+use std::collections::{HashMap, HashSet};
 
 extern crate ordered_float;
 use self::ordered_float::OrderedFloat;
@@ -180,7 +180,7 @@ fn g(
 
         NodeKind::LetFuncExpr(node::FuncDef {
                                   name: (x, t),
-                                  params: params,
+                                  params,
                               },
                               expr,
                               body) => {

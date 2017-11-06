@@ -8,16 +8,14 @@ extern crate libc;
 use std::ffi::CString;
 use std::ptr;
 use std::boxed::Box;
-use std::collections::{HashMap, hash_map, VecDeque};
+use std::collections::HashMap;
 
-use node::{NodeKind, FuncDef, BinOps, CompBinOps};
-use node;
+use node::{BinOps, CompBinOps};
 
 use closure::{Closure, Prog};
 use closure;
 
-use typing::{Type, TypeScheme};
-use typing;
+use typing::Type;
 
 #[derive(Eq, PartialEq, Hash)]
 pub struct ExtFunc {
@@ -53,6 +51,11 @@ pub extern "C" fn print_float(f: f64) {
 #[no_mangle]
 pub extern "C" fn print_newline(_: i32) {
     print!("\n");
+}
+
+
+unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
+    LLVMIsATerminatorInst(LLVMGetLastInstruction(LLVMGetInsertBlock(builder))) == ptr::null_mut()
 }
 
 impl<'a> CodeGen<'a> {
@@ -164,7 +167,12 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub unsafe fn gen(&mut self, progs: Vec<Prog>) -> CodeGenResult<LLVMValueRef> {
+    pub unsafe fn gen(
+        &mut self,
+        mod_dump_to_stderr: bool,
+        run_module_for_debugging: bool,
+        progs: Vec<Prog>,
+    ) -> CodeGenResult<LLVMValueRef> {
         let main_ty = LLVMFunctionType(LLVMInt32Type(), vec![].as_mut_slice().as_mut_ptr(), 0, 0);
         let main = LLVMAddFunction(self.module, CString::new("main").unwrap().as_ptr(), main_ty);
         let bb_entry = LLVMAppendBasicBlock(main, CString::new("entry").unwrap().as_ptr());
@@ -184,18 +192,27 @@ impl<'a> CodeGen<'a> {
 
         LLVMBuildRet(self.builder, try!(self.gen_int(0)));
 
-        LLVMDumpModule(self.module);
+        if mod_dump_to_stderr {
+            LLVMDumpModule(self.module);
+        }
 
-        println!("*** running main ***");
+        if run_module_for_debugging {
+            println!("*** running main ***");
+            self.run_module();
+            println!("*** end of main ***");
+        }
+
+        Ok(ptr::null_mut())
+    }
+
+    pub unsafe fn run_module(&mut self) {
+        let main = LLVMGetNamedFunction(self.module, CString::new("main").unwrap().as_ptr());
         llvm::execution_engine::LLVMRunFunction(
             self.exec_engine,
             main,
             0,
             vec![].as_mut_slice().as_mut_ptr(),
         );
-        println!("*** end of main ***");
-
-        Ok(ptr::null_mut())
     }
 
     unsafe fn gen_fun(
@@ -404,8 +421,8 @@ impl<'a> CodeGen<'a> {
         env: &HashMap<String, LLVMValueRef>,
         fv: &HashMap<String, Vec<String>>,
         cur_fun: Option<LLVMValueRef>,
-        name: &String,
-        ty: &Type,
+        _name: &String,
+        _ty: &Type,
         cls: &closure::Cls,
         body: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
@@ -649,6 +666,18 @@ impl<'a> CodeGen<'a> {
         then: &Closure,
         els: &Closure,
     ) -> CodeGenResult<LLVMValueRef> {
+        macro_rules! tailcall {
+            ($closure:expr, $val:expr) => (
+                LLVMSetTailCall(
+                    $val,
+                    match $closure {
+                        &Closure::AppCls(_, _) |
+                        &Closure::AppDir(_, _) => 1,
+                        _ => 0,
+                    },
+                );
+            );
+        };
         let cond_val = try!(self.gen_expr(env, fv, cur_fun, cond));
 
         let fun = cur_fun.unwrap();
@@ -661,22 +690,18 @@ impl<'a> CodeGen<'a> {
         LLVMPositionBuilderAtEnd(self.builder, bb_then);
 
         let then_val = try!(self.gen_expr(env, fv, cur_fun, then));
+        tailcall!(then, then_val);
         // if cur_bb_has_no_terminator(self.builder) {
+        let actual_bb_then = LLVMGetInsertBlock(self.builder);
         LLVMBuildBr(self.builder, bb_merge);
         // }
 
         LLVMPositionBuilderAtEnd(self.builder, bb_else);
 
         let else_val = try!(self.gen_expr(env, fv, cur_fun, els));
-        LLVMSetTailCall(
-            else_val,
-            match els {
-                &Closure::AppCls(_, _) |
-                &Closure::AppDir(_, _) => 1,
-                _ => 0,
-            },
-        );
+        tailcall!(els, else_val);
         // if cur_bb_has_no_terminator(self.builder) {
+        let actual_bb_else = LLVMGetInsertBlock(self.builder);
         LLVMBuildBr(self.builder, bb_merge);
         // }
 
@@ -690,13 +715,13 @@ impl<'a> CodeGen<'a> {
         LLVMAddIncoming(
             phi,
             vec![then_val].as_mut_slice().as_mut_ptr(),
-            vec![bb_then].as_mut_slice().as_mut_ptr(),
+            vec![actual_bb_then].as_mut_slice().as_mut_ptr(),
             1,
         );
         LLVMAddIncoming(
             phi,
             vec![else_val].as_mut_slice().as_mut_ptr(),
-            vec![bb_else].as_mut_slice().as_mut_ptr(),
+            vec![actual_bb_else].as_mut_slice().as_mut_ptr(),
             1,
         );
 

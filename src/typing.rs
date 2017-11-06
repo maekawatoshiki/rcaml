@@ -1,5 +1,5 @@
 use std::boxed::Box;
-use std::collections::{HashMap, hash_map, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use node::{NodeKind, FuncDef};
 use id;
@@ -219,47 +219,45 @@ fn occur(r1: usize, ty: &Type) -> bool {
 
 
 pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(), TypeError> {
-    unsafe {
-        match (t1, t2) {
-            (&Type::Unit, &Type::Unit) => Ok(()),
-            (&Type::Bool, &Type::Bool) => Ok(()),
-            (&Type::Char, &Type::Char) => Ok(()),
-            (&Type::Int, &Type::Int) => Ok(()),
-            (&Type::Float, &Type::Float) => Ok(()),
-            (&Type::Func(ref t1p, ref t1r), &Type::Func(ref t2p, ref t2r)) => {
-                if t1p.len() != t2p.len() {
-                    return Err(TypeError::Unify(t1.clone(), t2.clone()));
-                }
-                for (a, b) in t1p.iter().zip(t2p.iter()) {
-                    try!(unify(a, b, tyenv));
-                }
-                unify(t1r, t2r, tyenv)
+    match (t1, t2) {
+        (&Type::Unit, &Type::Unit) => Ok(()),
+        (&Type::Bool, &Type::Bool) => Ok(()),
+        (&Type::Char, &Type::Char) => Ok(()),
+        (&Type::Int, &Type::Int) => Ok(()),
+        (&Type::Float, &Type::Float) => Ok(()),
+        (&Type::Func(ref t1p, ref t1r), &Type::Func(ref t2p, ref t2r)) => {
+            if t1p.len() != t2p.len() {
+                return Err(TypeError::Unify(t1.clone(), t2.clone()));
             }
-            (&Type::Tuple(ref t1e), &Type::Tuple(ref t2e)) => {
-                if t1e.len() != t2e.len() {
+            for (a, b) in t1p.iter().zip(t2p.iter()) {
+                try!(unify(a, b, tyenv));
+            }
+            unify(t1r, t2r, tyenv)
+        }
+        (&Type::Tuple(ref t1e), &Type::Tuple(ref t2e)) => {
+            if t1e.len() != t2e.len() {
+                return Err(TypeError::Unify(t1.clone(), t2.clone()));
+            }
+            for (a, b) in t1e.iter().zip(t2e.iter()) {
+                try!(unify(a, b, tyenv));
+            }
+            Ok(())
+        }
+        (&Type::Var(i1), &Type::Var(i2)) if i1 == i2 => Ok(()),
+        (&Type::Var(ref i1), _) => {
+            if let Some(t1sub) = tyenv.get(i1).cloned() {
+                unify(&t1sub, t2, tyenv)
+            } else {
+                if occur(*i1, t2) {
                     return Err(TypeError::Unify(t1.clone(), t2.clone()));
                 }
-                for (a, b) in t1e.iter().zip(t2e.iter()) {
-                    try!(unify(a, b, tyenv));
-                }
+                tyenv.insert(*i1, t2.clone());
                 Ok(())
             }
-            (&Type::Var(i1), &Type::Var(i2)) if i1 == i2 => Ok(()),
-            (&Type::Var(ref i1), _) => {
-                if let Some(t1sub) = tyenv.get(i1).cloned() {
-                    unify(&t1sub, t2, tyenv)
-                } else {
-                    if occur(*i1, t2) {
-                        return Err(TypeError::Unify(t1.clone(), t2.clone()));
-                    }
-                    tyenv.insert(*i1, t2.clone());
-                    Ok(())
-                }
-            }
-            (_, &Type::Var(_)) => unify(t2, t1, tyenv),
-            // TODO: implement more types
-            _ => Err(TypeError::Unify(t1.clone(), t2.clone())),
         }
+        (_, &Type::Var(_)) => unify(t2, t1, tyenv),
+        // TODO: implement more types
+        _ => Err(TypeError::Unify(t1.clone(), t2.clone())),
     }
 }
 
@@ -284,7 +282,6 @@ fn subst(ty: Type, tyenv: &mut HashMap<usize, Type>, map: HashMap<usize, Type>) 
                 ty
             }
         }
-        _ => panic!(),
     }
 }
 
@@ -294,7 +291,7 @@ fn instantiate(
     idgen: &mut id::IdGen,
 ) -> Type {
     let mut map = HashMap::new();
-    let mut oldtyvars = tyscheme.tyvars;
+    let oldtyvars = tyscheme.tyvars;
     let mut newtyvars = vec![];
     for o in oldtyvars {
         let v = idgen.get_type();
@@ -319,11 +316,7 @@ fn unwrap_var(ty: Type, tyenv: &mut HashMap<usize, Type>, freevars: &mut Vec<Typ
             unwrap_var(*ret, tyenv, freevars)
         }
         Type::Tuple(es) => seq!(es),
-        Type::Var(id) => {
-            freevars.push(ty.clone());
-        }
-        // TODO: impl more types
-        _ => (),
+        Type::Var(_) => freevars.push(ty.clone()),
     }
 }
 
@@ -506,7 +499,6 @@ pub fn g(
 
 pub fn f(node: &NodeKind, tyenv: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> NodeKind {
     let infered_ty = g(node, &HashMap::new(), tyenv, idgen);
-    println!("f: {:?}", infered_ty);
-    // TODO: originally maybe infered_ty must be Type::Unit
+    // TODO: infered_ty == Unit
     deref_term(node, tyenv)
 }

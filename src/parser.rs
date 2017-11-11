@@ -142,14 +142,22 @@ named!(expr_let<NodeKind>, alt_complete!(
     )
 );
 
-named!(expr_semicolon<NodeKind>, alt_complete!(
-    ws!(do_parse!(
-        e1: expr_if >> 
-        tag!(";") >>
-        e2: expr >> 
-        (NodeKind::LetExpr(("_".to_string(), Type::Unit), Box::new(e1), Box::new(e2)))
-    ))
-    |   expr_if
+named!(expr_semicolon<NodeKind>,
+    do_parse!(
+        init: expr_if >> 
+        res:  fold_many0!(
+                do_parse!(
+                    opt_spaces >> 
+                    op: tag!(";") >> 
+                    opt_spaces >> 
+                    rhs: expr >> 
+                    (rhs)
+                ),
+                init,
+                |e1, e2: NodeKind| {
+                    NodeKind::LetExpr(("_".to_string(), Type::Var(0)), Box::new(e1), Box::new(e2))
+                }
+        ) >> (res)
     )
 );
 

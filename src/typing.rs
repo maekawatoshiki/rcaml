@@ -498,7 +498,7 @@ pub fn g(
 }
 
 pub fn f(node: &NodeKind, tyenv: &mut HashMap<usize, Type>, idgen: &mut id::IdGen) -> NodeKind {
-    let infered_ty = g(node, &HashMap::new(), tyenv, idgen);
+    let _infered_ty = g(node, &HashMap::new(), tyenv, idgen);
     // TODO: infered_ty == Unit
     deref_term(node, tyenv)
 }

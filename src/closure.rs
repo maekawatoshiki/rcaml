@@ -8,6 +8,8 @@ use std::collections::{HashMap, HashSet};
 extern crate ordered_float;
 use self::ordered_float::OrderedFloat;
 
+use parser::EXTENV;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Cls {
     pub entry: String,
@@ -260,6 +262,11 @@ fn g(
 
 pub fn f(e: NodeKind) -> Prog {
     let mut toplevel = Vec::new();
-    let e = g(e, &HashMap::new(), &HashSet::new(), &mut toplevel);
+    // TODO: better code needed
+    let mut known = HashSet::new();
+    for (fun_name, _) in EXTENV.lock().unwrap().iter() {
+        known.insert(fun_name.to_owned());
+    }
+    let e = g(e, &HashMap::new(), &known, &mut toplevel);
     Prog(toplevel, e)
 }

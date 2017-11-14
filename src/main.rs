@@ -119,35 +119,37 @@ fn main() {
         parser::parse_and_infer_type_and_closure_conv("let t = 1, 2.3, false in t");
         parser::parse_and_infer_type_and_closure_conv("let (a, b, c) = 1, 2.3, false in a + b + c");
 
+        parser::poly_solve("let f x = x in f 1");
+
         // let e = "let f x = x;; f 1;; f 1.3";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";
         // let e = "let a = 123;; print_int (a + 7);; print_newline ()";
-        let e = "let f x = x + 1 in
-                    print_int (f 2) ;;
-                 print_newline () ;;
-                 let g x =
-                    let h y = x + y in
-                    h x
-                 in print_int (g 1) ;;
-                 print_newline () ;;
-                 let x = 1.2 in
-                     let y = 1.11 in
-                        print_float (x +. y) ;;
-                 print_newline ()
-                 let fact x acc = 
-                    if x <= 1 then acc
-                    else fact (x - 1) (acc + x) in
-                 print_int (fact 100 1) ;;
-                 print_newline () ;;
-                 let gcd a b =
-                     if b = 0 then a else gcd b (a mod b) in
-                 print_int (gcd 55 200) ;;
-                 print_newline () ;;
-                 let fibo x = 
-                    if x <= 1 then 1
-                    else (fibo (x - 1)) + (fibo (x - 2)) in
-                 print_int (fibo 10) ;;
-                 print_newline ()";
-        parser::parse_module_items(e);
+        // let e = "let f x = x + 1 in
+        //             print_int (f 2) ;;
+        //          print_newline () ;;
+        //          let g x =
+        //             let h y = x + y in
+        //             h x
+        //          in print_int (g 1) ;;
+        //          print_newline () ;;
+        //          let x = 1.2 in
+        //              let y = 1.11 in
+        //                 print_float (x +. y) ;;
+        //          print_newline ()
+        //          let fact x acc =
+        //             if x <= 1 then acc
+        //             else fact (x - 1) (acc + x) in
+        //          print_int (fact 100 1) ;;
+        //          print_newline () ;;
+        //          let gcd a b =
+        //              if b = 0 then a else gcd b (a mod b) in
+        //          print_int (gcd 55 200) ;;
+        //          print_newline () ;;
+        //          let fibo x =
+        //             if x <= 1 then 1
+        //             else (fibo (x - 1)) + (fibo (x - 2)) in
+        //          print_int (fibo 10) ;;
+        //          print_newline ()";
+        // parser::parse_module_items(e);
     }
 }

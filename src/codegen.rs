@@ -173,6 +173,15 @@ impl<'a> CodeGen<'a> {
         run_module_for_debugging: bool,
         progs: Vec<Prog>,
     ) -> CodeGenResult<LLVMValueRef> {
+        let pm = LLVMCreatePassManager();
+        llvm::transforms::scalar::LLVMAddTailCallEliminationPass(pm);
+        llvm::transforms::scalar::LLVMAddReassociatePass(pm);
+        llvm::transforms::scalar::LLVMAddGVNPass(pm);
+        llvm::transforms::scalar::LLVMAddInstructionCombiningPass(pm);
+        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+        llvm::transforms::scalar::LLVMAddPromoteMemoryToRegisterPass(pm);
+
         let main_ty = LLVMFunctionType(LLVMInt32Type(), vec![].as_mut_slice().as_mut_ptr(), 0, 0);
         let main = LLVMAddFunction(self.module, CString::new("main").unwrap().as_ptr(), main_ty);
         let bb_entry = LLVMAppendBasicBlock(main, CString::new("entry").unwrap().as_ptr());
@@ -195,6 +204,8 @@ impl<'a> CodeGen<'a> {
         if mod_dump_to_stderr {
             LLVMDumpModule(self.module);
         }
+
+        LLVMRunPassManager(pm, self.module);
 
         if run_module_for_debugging {
             println!("*** running main ***");

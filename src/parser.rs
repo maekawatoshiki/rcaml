@@ -649,6 +649,27 @@ pub fn parse_and_infer_type_and_closure_conv(e: &str) {
     println!("{}", Colour::Green.bold().paint(format!("closure:\t{:?}", closured)));
 }
 
+pub fn poly_solve(e: &str) {
+    println!("{}", Style::new().underline().bold().paint(format!("expression:\t{}",e)));
+    let node = match module_item(e.as_bytes()) {
+        IResult::Done(_, node) => node,
+        _ => panic!(),
+    };
+    // sloppy impl of showing type-infered node
+    use typing;
+    use id;
+    use closure;
+    use poly_solve;
+    let mut idgen = id::IdGen::new();
+    let mut tyenv = HashMap::new();
+    let uniquified = uniquify(node, &mut idgen);
+    let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
+    let closured = closure::f(infered);
+    let poly_solved = poly_solve::f(closured);
+    println!("{}", Colour::Yellow.bold().paint(format!("generated:\t{:?}", uniquified)));
+    println!("{}", Colour::Green.bold().paint(format!("poly_solved:\t{:?}", poly_solved)));
+}
+
 
 use std::sync::Mutex;
 

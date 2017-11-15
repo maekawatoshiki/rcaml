@@ -21,13 +21,19 @@ fn retrieve_var_name(e: &Closure) -> Option<String> {
     }
 }
 
+// TODO: MUST FIX THIS DIRTY CODE!!
+
 pub fn h(f: FuncDef, p: &mut HashMap<String, Vec<ArgsTypes>>) -> Vec<FuncDef> {
     let mut fundefs = Vec::new();
     let (name, ty) = f.name;
-    let poly_args = p.get(&name).unwrap().clone();
+    let poly_args = if let Some(a) = p.get(&name).cloned() {
+        a
+    } else {
+        return vec![];
+    };
     for pargs in poly_args {
         let mut env = HashMap::new();
-        let mut name_mangled = name.clone() + "_";
+        let mut name_mangled = name.clone() + "#";
         let mut actual_params = vec![];
         for (actual_ty, &(ref param_name, _)) in pargs.iter().zip(&f.params.clone()) {
             env.insert(param_name.clone(), actual_ty.clone());
@@ -36,7 +42,13 @@ pub fn h(f: FuncDef, p: &mut HashMap<String, Vec<ArgsTypes>>) -> Vec<FuncDef> {
         }
         let (body, ret_ty) = g(*f.body.clone(), &env, p);
         fundefs.push(FuncDef {
-            name: (name_mangled, ret_ty),
+            name: (
+                name_mangled,
+                Type::Func(
+                    actual_params.iter().map(|x| x.1.clone()).collect(),
+                    Box::new(ret_ty),
+                ),
+            ),
             params: actual_params,
             formal_fv: f.formal_fv.clone(),
             body: Box::new(body),
@@ -53,7 +65,7 @@ pub fn g(
     macro_rules! g_seq {
         ($es:expr) => ({
             let mut tys = Vec::new();
-            for e in $es { tys.push(g(e, env, p).1); }
+            for e in $es { tys.push(g(e, env, p)); }
             tys 
         });
     }
@@ -69,17 +81,46 @@ pub fn g(
                 panic!()
             }
         }
+        Closure::IntBinaryOp(op, lhs, rhs) => {
+            (
+                Closure::IntBinaryOp(op, Box::new(g(*lhs, env, p).0), Box::new(g(*rhs, env, p).0)),
+                Type::Int,
+            )
+        }
+        Closure::LetExpr((name, ty), expr, body) => {
+            let mut new_env = env.clone();
+            let (expr, expr_ty) = g(*expr, &env, p);
+            let ty = if ty.contained_var() { expr_ty } else { ty };
+            new_env.insert(name.clone(), ty.clone());
+            let (body, body_ty) = g(*body, &new_env, p);
+            (
+                Closure::LetExpr((name, ty), Box::new(expr), Box::new(body)),
+                body_ty,
+            )
+        }
         Closure::AppCls(callee, args) |
         Closure::AppDir(callee, args) => {
-            let args_ty = g_seq!(args.clone());
             let name = retrieve_var_name(&*callee).unwrap();
-            let mut name_mangled = name.clone() + "_";
-            for a in args_ty.clone() {
-                name_mangled += a.to_string().as_str();
+            if EXTENV.lock().unwrap().contains_key(name.as_str()) {
+                let args2 = g_seq!(args.clone());
+                let mut args = vec![];
+                for (e, a) in args2.clone() {
+                    args.push(e);
+                }
+                return (Closure::AppCls(callee, args), Type::Unit);
+            }
+            let args = g_seq!(args.clone());
+            let mut name_mangled = name.clone() + "#";
+            let mut args_expr = vec![];
+            let mut args_ty = vec![];
+            for (e, t) in args.clone() {
+                name_mangled += t.to_string().as_str();
+                args_expr.push(e);
+                args_ty.push(t);
             }
             (*p.entry(name).or_insert(vec![])).push(args_ty);
             (
-                Closure::AppCls(Box::new(Closure::Var(name_mangled)), args),
+                Closure::AppCls(Box::new(Closure::Var(name_mangled)), args_expr),
                 Type::Unit,
             )
         }
@@ -97,4 +138,23 @@ pub fn f(e: Prog) -> Prog {
         new_fundef.extend(h(f, &mut poly_map).iter().cloned());
     }
     Prog(new_fundef, expr)
+}
+
+impl Type {
+    fn contained_var(&self) -> bool {
+        macro_rules! seq {
+            ($es:expr) => ({
+                for e in $es { if e.contained_var() { return true } }
+            });
+        }
+        match self {
+            &Type::Unit | &Type::Char | &Type::Int | &Type::Float => false,
+            &Type::Func(ref params_ty, ref ret_ty) => {
+                seq!(params_ty);
+                ret_ty.contained_var()
+            }
+            &Type::Var(_) => true,
+            _ => panic!(format!("{:?}", self)),
+        }
+    }
 }

@@ -342,6 +342,7 @@ impl<'a> CodeGen<'a> {
             // &NodeKind:: FloatUnaryOp(UnaryOps, Box<NodeKind>)
             &Closure::Var(ref name) => self.gen_var_load(env, name),
             &Closure::Int(ref i) => self.gen_int(*i),
+            &Closure::Bool(ref b) => self.gen_bool(*b),
             &Closure::Float(ref f) => self.gen_float(f.into_inner()),
             &Closure::Unit => self.gen_int(0), // tmp
             _ => panic!(format!("not implemented {:?}", closure)),
@@ -772,6 +773,10 @@ impl<'a> CodeGen<'a> {
         Ok(LLVMConstInt(LLVMInt32Type(), i as u64, 0))
     }
 
+    pub unsafe fn gen_bool(&mut self, b: bool) -> CodeGenResult<LLVMValueRef> {
+        Ok(LLVMConstInt(LLVMInt32Type(), if b { 1 } else { 0 }, 0))
+    }
+
     pub unsafe fn gen_float(&mut self, f: f64) -> CodeGenResult<LLVMValueRef> {
         Ok(LLVMConstReal(LLVMDoubleType(), f))
     }
@@ -781,6 +786,7 @@ impl Type {
     pub unsafe fn to_llvmty(&self) -> LLVMTypeRef {
         match self {
             &Type::Unit => LLVMInt32Type(),
+            &Type::Bool => LLVMInt32Type(),
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),

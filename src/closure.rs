@@ -67,7 +67,7 @@ fn fv(e: &Closure) -> HashSet<String> {
         } }
     }
     match *e {
-        Unit | Int(_) | Float(_) => HashSet::new(),
+        Unit | Bool(_) | Int(_) | Float(_) => HashSet::new(),
         // Neg(ref x) | FNeg(ref x) => build_set!(x),
         IntBinaryOp(_, ref x, ref y) |
         FloatBinaryOp(_, ref x, ref y) |

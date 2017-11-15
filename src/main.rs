@@ -118,10 +118,13 @@ fn main() {
         );
         parser::parse_and_infer_type_and_closure_conv("let t = 1, 2.3, false in t");
         parser::parse_and_infer_type_and_closure_conv("let (a, b, c) = 1, 2.3, false in a + b + c");
+        parser::poly_solve("let f x = let y = x in y in f 1 ; f 2.3 ; f false");
 
-        parser::poly_solve("let f x = x in f 1");
-
-        // let e = "let f x = x;; f 1;; f 1.3";
+        let e = "let g x = 
+                    x + 1 in 
+                 let f x = 
+                    x in
+                 print_int (g 1) ; print_int (f 2)";
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";
         // let e = "let a = 123;; print_int (a + 7);; print_newline ()";
         // let e = "let f x = x + 1 in
@@ -150,6 +153,6 @@ fn main() {
         //             else (fibo (x - 1)) + (fibo (x - 2)) in
         //          print_int (fibo 10) ;;
         //          print_newline ()";
-        // parser::parse_module_items(e);
+        parser::parse_module_items(e);
     }
 }

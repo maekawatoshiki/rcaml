@@ -24,18 +24,21 @@ fn retrieve_var_name(e: &Closure) -> Option<String> {
 // TODO: MUST FIX THIS DIRTY CODE!!
 
 pub fn h(f: FuncDef, p: &mut HashMap<String, Vec<ArgsTypes>>) -> Vec<FuncDef> {
-    let mut fundefs = Vec::new();
     let (name, ty) = f.name;
-    let poly_args = if let Some(a) = p.get(&name).cloned() {
-        a
+    let args_tys_list = if let Some(args_tys_list) = p.get(&name).cloned() {
+        args_tys_list
     } else {
+        // the function named 'name' is not a polymorphic function.
         return vec![];
     };
-    for pargs in poly_args {
+
+    let mut fundefs = Vec::new();
+    for args_tys in args_tys_list {
         let mut env = HashMap::new();
+        // TODO: should make a func for mangling.
         let mut name_mangled = name.clone() + "#";
         let mut actual_params = vec![];
-        for (actual_ty, &(ref param_name, _)) in pargs.iter().zip(&f.params.clone()) {
+        for (actual_ty, &(ref param_name, _)) in args_tys.iter().zip(&f.params.clone()) {
             env.insert(param_name.clone(), actual_ty.clone());
             actual_params.push((param_name.clone(), actual_ty.clone()));
             name_mangled += actual_ty.clone().to_string().as_str();

@@ -359,7 +359,7 @@ named!(constant<NodeKind>,
     alt_complete!(float | integer | ident | bool_false | bool_true)
 );
 
-named!(parens<NodeKind>, delimited!(tag!("("), expr, tag!(")")));
+named!(parens<NodeKind>, delimited!(tag!("("), ws!(expr), tag!(")")));
 
 named!(unit<NodeKind>, do_parse!(tag!("(") >> tag!(")") >> (NodeKind::Unit)));
 

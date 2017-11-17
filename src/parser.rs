@@ -554,7 +554,6 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
     use id;
     use codegen;
     use closure;
-    use poly_solve;
 
     let mut idgen = id::IdGen::new();
     let mut tyenv = HashMap::new();
@@ -571,9 +570,8 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
                 println!("{:?}", uniquified.clone());
                 let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
                 let closured = closure::f(infered);
-                let poly_solved = poly_solve::f(closured);
-                println!("{}", Colour::Green.bold().paint(format!("program:\t{:?}", poly_solved)));
-                progs.push(poly_solved);
+                println!("{}", Colour::Green.bold().paint(format!("program:\t{:?}", closured)));
+                progs.push(closured);
                 code = str::from_utf8(remain).unwrap();
             }
             IResult::Incomplete(needed) => panic!(format!("imcomplete: {:?}", needed)),
@@ -583,7 +581,7 @@ pub fn parse_module_items(e: &str) -> Vec<Prog> {
 
     unsafe {
         let mut codegen = codegen::CodeGen::new(&mut tyenv);
-        codegen.gen(true, true, progs.clone());
+        codegen.gen(true, true, progs.clone()).unwrap();
     }
     progs
 }
@@ -650,28 +648,6 @@ pub fn parse_and_infer_type_and_closure_conv(e: &str) {
     println!("{}", Colour::Yellow.bold().paint(format!("generated:\t{:?}", uniquified)));
     println!("{}", Colour::Green.bold().paint(format!("closure:\t{:?}", closured)));
 }
-
-pub fn poly_solve(e: &str) {
-    println!("{}", Style::new().underline().bold().paint(format!("expression:\t{}",e)));
-    let node = match module_item(e.as_bytes()) {
-        IResult::Done(_, node) => node,
-        _ => panic!(),
-    };
-    // sloppy impl of showing type-infered node
-    use typing;
-    use id;
-    use closure;
-    use poly_solve;
-    let mut idgen = id::IdGen::new();
-    let mut tyenv = HashMap::new();
-    let uniquified = uniquify(node, &mut idgen);
-    let infered = typing::f(&uniquified, &mut tyenv, &mut idgen);
-    let closured = closure::f(infered);
-    let poly_solved = poly_solve::f(closured);
-    println!("{}", Colour::Yellow.bold().paint(format!("generated:\t{:?}", uniquified)));
-    println!("{}", Colour::Green.bold().paint(format!("poly_solved:\t{:?}", poly_solved)));
-}
-
 
 use std::sync::Mutex;
 

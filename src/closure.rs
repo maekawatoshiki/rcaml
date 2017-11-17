@@ -117,7 +117,6 @@ fn fv(e: &Closure) -> HashSet<String> {
             &fv(expr) | &(&fv(body) - &tmp)
         }
         // Put(ref x, ref y, ref z) => build_set!(x, y, z),
-        _ => panic!(format!("{:?}", e)),
     }
 }
 

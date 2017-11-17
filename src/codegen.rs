@@ -29,11 +29,12 @@ pub struct CodeGen<'a> {
     builder: LLVMBuilderRef,
     exec_engine: llvm::execution_engine::LLVMExecutionEngineRef,
     llvm_main_fun: Option<LLVMValueRef>,
-    tyenv: &'a mut HashMap<usize, Type>,
+    _tyenv: &'a mut HashMap<usize, Type>,
     ext_funcmap: HashMap<String, ExtFunc>,
     global_varmap: HashMap<String, (Type, LLVMTypeRef, LLVMValueRef)>,
 }
 
+#[derive(Debug)]
 pub enum CodeGenError {
     Something,
 }
@@ -161,7 +162,7 @@ impl<'a> CodeGen<'a> {
             builder: LLVMCreateBuilderInContext(context),
             exec_engine: ee,
             llvm_main_fun: None,
-            tyenv: tyenv,
+            _tyenv: tyenv,
             ext_funcmap: ext_funcmap,
             global_varmap: HashMap::new(),
         }

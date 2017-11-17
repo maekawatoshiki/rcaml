@@ -5,7 +5,6 @@ pub mod typing;
 pub mod id;
 pub mod codegen;
 pub mod closure;
-pub mod poly_solve;
 
 #[macro_use]
 extern crate nom;

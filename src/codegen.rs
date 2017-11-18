@@ -456,7 +456,7 @@ impl<'a> CodeGen<'a> {
         let name = if let &Closure::Var(ref name) = callee {
             name
         } else {
-            panic!("not supported")
+            panic!()
         };
 
         let mut args_val = Vec::new();
@@ -793,11 +793,11 @@ impl Type {
             &Type::Float => LLVMDoubleType(),
             &Type::Func(ref params_ty, ref ret_ty) => {
                 LLVMFunctionType(
-                    ret_ty.to_llvmty(),
+                    ret_ty.to_llvmty_sub(),
                     || -> *mut LLVMTypeRef {
                         let mut param_llvm_types: Vec<LLVMTypeRef> = Vec::new();
                         for param_ty in params_ty {
-                            param_llvm_types.push(param_ty.to_llvmty());
+                            param_llvm_types.push(param_ty.to_llvmty_sub());
                         }
                         param_llvm_types.as_mut_slice().as_mut_ptr()
                     }(),
@@ -805,7 +805,33 @@ impl Type {
                     0,
                 )
             }
-
+            _ => panic!(format!("{:?}", self)),
+        }
+    }
+    pub unsafe fn to_llvmty_sub(&self) -> LLVMTypeRef {
+        match self {
+            &Type::Unit => LLVMInt32Type(),
+            &Type::Bool => LLVMInt32Type(),
+            &Type::Char => LLVMInt8Type(),
+            &Type::Int => LLVMInt32Type(),
+            &Type::Float => LLVMDoubleType(),
+            &Type::Func(ref params_ty, ref ret_ty) => {
+                LLVMPointerType(
+                    LLVMFunctionType(
+                        ret_ty.to_llvmty_sub(),
+                        || -> *mut LLVMTypeRef {
+                            let mut param_llvm_types: Vec<LLVMTypeRef> = Vec::new();
+                            for param_ty in params_ty {
+                                param_llvm_types.push(param_ty.to_llvmty_sub());
+                            }
+                            param_llvm_types.as_mut_slice().as_mut_ptr()
+                        }(),
+                        params_ty.len() as u32,
+                        0,
+                    ),
+                    0,
+                )
+            }
             _ => panic!(format!("{:?}", self)),
         }
     }

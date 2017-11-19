@@ -4,6 +4,9 @@ use std::str;
 use std::str::FromStr;
 use std::collections::HashMap;
 
+extern crate rand;
+use self::rand::Rng;
+
 use node;
 use node::NodeKind;
 use closure::Prog;
@@ -507,9 +510,19 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             NodeKind::FloatBinaryOp(op, e1, e2)
         }
         NodeKind::Call(e1, mut e2s) => {
-            let e1 = Box::new(uniquify(*e1, idgen));
-            uniquify_seq(&mut e2s, idgen);
-            NodeKind::Call(e1, e2s)
+            if let &NodeKind::Ident(_) = &*e1 {
+                let e1 = Box::new(uniquify(*e1, idgen));
+                uniquify_seq(&mut e2s, idgen);
+                NodeKind::Call(e1, e2s)
+            } else {
+                let rand_name: String = rand::thread_rng().gen_ascii_chars().take(8).collect();
+                uniquify_seq(&mut e2s, idgen);
+                NodeKind::LetExpr(
+                    (rand_name.clone(), idgen.get_type()),
+                    e1,
+                    Box::new(NodeKind::Call(Box::new(NodeKind::Ident(rand_name)), e2s)),
+                )
+            }
         }
         NodeKind::IfExpr(c, t, e) => {
             NodeKind::IfExpr(

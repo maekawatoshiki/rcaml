@@ -185,22 +185,45 @@ named!(expr_if<NodeKind>, alt_complete!(
 
 named!(expr_comma<NodeKind>, alt_complete!(
     do_parse!(
-        init: expr_add_sub >> 
+        init: expr_comp >> 
         res:  fold_many1!(
                 do_parse!(
                     opt_spaces >> 
                     tag!(",") >> 
                     opt_spaces >> 
-                    rhs: expr_add_sub >> 
+                    rhs: expr_comp >> 
                     (rhs)
                 ),
                 vec![init],
                 |mut acc: Vec<NodeKind>, e| { acc.push(e); acc }
         ) >> (NodeKind::Tuple(res))
     )
-    | expr_add_sub
+    | expr_comp
     )
 );
+
+named!(expr_comp<NodeKind>,
+    do_parse!(
+        init: expr_add_sub >> 
+        res:  fold_many0!(
+                do_parse!(
+                    opt_spaces >> 
+                    op: alt!(
+                        tag!("<>") | tag!("==") | tag!("!=") |
+                        tag!("<=") | tag!(">=") | tag!("<") | tag!(">") | tag!("=")
+                        ) >>
+                    opt_spaces >> 
+                    rhs: expr_add_sub >> 
+                    (op, rhs)
+                ),
+                init,
+                |n1, (op, n2): (&[u8], NodeKind)| {
+                    NodeKind::CompBinaryOp(node::str_to_comp_binop(str::from_utf8(op).unwrap()), Box::new(n1), Box::new(n2)) 
+                }
+        ) >> (res)
+    )
+);
+
 
 named!(expr_add_sub<NodeKind>,
     do_parse!(
@@ -225,13 +248,13 @@ named!(expr_add_sub<NodeKind>,
 
 named!(expr_mul_div<NodeKind>,
     do_parse!(
-        init: expr_comp >> 
+        init: expr_unary >> 
         res:  fold_many0!(
                 do_parse!(
                     opt_spaces >> 
                     op: alt!(tag!("mod") | tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
                     opt_spaces >> 
-                    rhs: expr_comp >> 
+                    rhs: expr_unary >> 
                     (op, rhs)
                 ),
                 init,
@@ -239,28 +262,6 @@ named!(expr_mul_div<NodeKind>,
                     let (op, is_int) = node::str_to_binop(to_str(op));
                     if is_int { NodeKind::IntBinaryOp(op, Box::new(n1), Box::new(n2)) } 
                     else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
-                }
-        ) >> (res)
-    )
-);
-
-named!(expr_comp<NodeKind>,
-    do_parse!(
-        init: expr_unary >> 
-        res:  fold_many0!(
-                do_parse!(
-                    opt_spaces >> 
-                    op: alt!(
-                        tag!("<>") | tag!("==") | tag!("!=") |
-                        tag!("<=") | tag!(">=") | tag!("<") | tag!(">") | tag!("=")
-                        ) >>
-                    opt_spaces >> 
-                    rhs: expr_unary >> 
-                    (op, rhs)
-                ),
-                init,
-                |n1, (op, n2): (&[u8], NodeKind)| {
-                    NodeKind::CompBinaryOp(node::str_to_comp_binop(str::from_utf8(op).unwrap()), Box::new(n1), Box::new(n2)) 
                 }
         ) >> (res)
     )
@@ -679,6 +680,10 @@ lazy_static! {
                       TypeScheme::new(vec![], Type::Func(
                                                 vec![Type::Unit], 
                                                 Box::new(Type::Unit))));
+        extenv.insert("float_of_int".to_string(), 
+                      TypeScheme::new(vec![], Type::Func(
+                                                vec![Type::Int], 
+                                                Box::new(Type::Float))));
         Mutex::new(extenv)
     };
 }

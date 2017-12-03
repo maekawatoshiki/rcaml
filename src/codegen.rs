@@ -78,6 +78,10 @@ pub extern "C" fn print_newline(_: i32) -> i32 {
     print!("\n");
     0
 }
+#[no_mangle]
+pub extern "C" fn float_of_int(i: i32) -> f64 {
+    i as f64
+}
 
 
 unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
@@ -178,6 +182,30 @@ impl<'a> CodeGen<'a> {
             ee,
             f_print_newline,
             print_newline as *mut libc::c_void,
+        );
+
+        let f_float_of_int_ty = LLVMFunctionType(
+            LLVMDoubleType(),
+            vec![LLVMInt32Type()].as_mut_slice().as_mut_ptr(),
+            1,
+            0,
+        );
+        let f_float_of_int = LLVMAddFunction(
+            module,
+            CString::new("float_of_int").unwrap().as_ptr(),
+            f_float_of_int_ty,
+        );
+        ext_funcmap.insert(
+            "float_of_int".to_string(),
+            ExtFunc {
+                ty: Type::Func(vec![Type::Int], Box::new(Type::Float)),
+                llvm_val: f_float_of_int,
+            },
+        );
+        llvm::execution_engine::LLVMAddGlobalMapping(
+            ee,
+            f_float_of_int,
+            float_of_int as *mut libc::c_void,
         );
 
         let f_malloc_ty = LLVMFunctionType(

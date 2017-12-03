@@ -718,6 +718,7 @@ pub fn test_parse_simple_expr() {
 pub fn test_parse_module_item() {
     use node::NodeKind::*;
     use node::FuncDef;
+    use node::BinOps::*;
 
     let f = |e: &str| match module_item(e.as_bytes()) {
         IResult::Done(_, expr_node) => expr_node,

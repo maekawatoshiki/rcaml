@@ -53,7 +53,7 @@ fn main() {
     let app = App::new("rcaml")
         .version(VERSION_STR)
         .author("uint256_t")
-        .about("rcaml is an OCaml-like implementation in Rust")
+        .about("rcaml is an OCaml-like language implementation in Rust")
         .arg(Arg::with_name("version").short("v").long("version").help(
             "Show version info",
         ))

@@ -385,6 +385,9 @@ impl<'a> CodeGen<'a> {
             &Closure::LetExpr((ref name, ref ty), ref expr, ref body) => {
                 self.gen_letexpr(env, cur_fun, name, ty, expr, body)
             }
+            &Closure::LetTupleExpr(ref xs, ref expr, ref body) => {
+                self.gen_lettupleexpr(env, cur_fun, xs, expr, body)
+            }
             // LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
             // LetFuncExpr(FuncDef, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
             // LetDef((String, typing::Type), Box<NodeKind>), // name, bound expr
@@ -425,6 +428,7 @@ impl<'a> CodeGen<'a> {
             &Closure::Int(ref i) => self.gen_int(*i),
             &Closure::Bool(ref b) => self.gen_bool(*b),
             &Closure::Float(ref f) => self.gen_float(f.into_inner()),
+            &Closure::Tuple(ref es) => self.gen_tuple(env, cur_fun, &*es),
             &Closure::Unit => self.gen_int(0), // tmp
             _ => panic!(format!("not implemented {:?}", closure)),
         }
@@ -470,6 +474,29 @@ impl<'a> CodeGen<'a> {
             LLVMTypeOf(llvm_expr_val),
         ));
         LLVMBuildStore(self.builder, llvm_expr_val, var);
+        self.gen_expr(&newenv, cur_fun, body)
+    }
+
+    pub unsafe fn gen_lettupleexpr(
+        &mut self,
+        env: &HashMap<String, ValKind>,
+        cur_fun: Option<LLVMValueRef>,
+        xs: &Vec<(String, Type)>,
+        expr: &Closure,
+        body: &Closure,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let mut newenv = env.clone();
+        let llvm_expr_val = try!(self.gen_expr(env, cur_fun, expr));
+        for (i, &(ref name, ref ty)) in xs.iter().enumerate() {
+            let llvm_elem_val = try!(self.llvm_struct_elem_extract(llvm_expr_val, i as u32));
+            let var = try!(self.declare_local_var(
+                &mut newenv,
+                cur_fun,
+                name,
+                LLVMTypeOf(llvm_elem_val),
+            ));
+            LLVMBuildStore(self.builder, llvm_elem_val, var);
+        }
         self.gen_expr(&newenv, cur_fun, body)
     }
 
@@ -564,6 +591,18 @@ impl<'a> CodeGen<'a> {
                 idx,
                 CString::new("").unwrap().as_ptr(),
             ),
+            CString::new("").unwrap().as_ptr(),
+        ))
+    }
+    unsafe fn llvm_struct_elem_extract(
+        &mut self,
+        p: LLVMValueRef,
+        idx: u32,
+    ) -> CodeGenResult<LLVMValueRef> {
+        Ok(LLVMBuildExtractValue(
+            self.builder,
+            p,
+            idx,
             CString::new("").unwrap().as_ptr(),
         ))
     }
@@ -959,15 +998,35 @@ impl<'a> CodeGen<'a> {
         Ok(val.get(self.builder))
     }
 
-    pub unsafe fn gen_int(&mut self, i: i32) -> CodeGenResult<LLVMValueRef> {
+    unsafe fn gen_tuple(
+        &mut self,
+        env: &HashMap<String, ValKind>,
+        cur_fun: Option<LLVMValueRef>,
+        es: &Vec<Closure>,
+    ) -> CodeGenResult<LLVMValueRef> {
+        let es = {
+            let mut v = vec![];
+            for e in es.iter().map(|ref e| self.gen_expr(env, cur_fun, e)) {
+                v.push(try!(e));
+            }
+            v
+        };
+        Ok(LLVMBuildLoad(
+            self.builder,
+            try!(self.llvm_struct_alloc(es)),
+            CString::new("").unwrap().as_ptr(),
+        ))
+    }
+
+    unsafe fn gen_int(&mut self, i: i32) -> CodeGenResult<LLVMValueRef> {
         Ok(LLVMConstInt(LLVMInt32Type(), i as u64, 0))
     }
 
-    pub unsafe fn gen_bool(&mut self, b: bool) -> CodeGenResult<LLVMValueRef> {
+    unsafe fn gen_bool(&mut self, b: bool) -> CodeGenResult<LLVMValueRef> {
         Ok(LLVMConstInt(LLVMInt32Type(), if b { 1 } else { 0 }, 0))
     }
 
-    pub unsafe fn gen_float(&mut self, f: f64) -> CodeGenResult<LLVMValueRef> {
+    unsafe fn gen_float(&mut self, f: f64) -> CodeGenResult<LLVMValueRef> {
         Ok(LLVMConstReal(LLVMDoubleType(), f))
     }
 }
@@ -980,6 +1039,17 @@ impl Type {
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),
+            &Type::Tuple(ref xs) => {
+                LLVMStructType(
+                    xs.iter()
+                        .map(|ref x| x.to_llvmty_sub())
+                        .collect::<Vec<_>>()
+                        .as_mut_slice()
+                        .as_mut_ptr(),
+                    xs.len() as u32,
+                    0,
+                )
+            }
             &Type::Func(ref params_ty, ref ret_ty) => {
                 LLVMFunctionType(
                     ret_ty.to_llvmty_sub(),
@@ -1006,6 +1076,17 @@ impl Type {
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),
+            &Type::Tuple(ref xs) => {
+                LLVMStructType(
+                    xs.iter()
+                        .map(|ref x| x.to_llvmty_sub())
+                        .collect::<Vec<_>>()
+                        .as_mut_slice()
+                        .as_mut_ptr(),
+                    xs.len() as u32,
+                    0,
+                )
+            }
             &Type::Func(ref params_ty, ref ret_ty) => {
                 let fty = LLVMPointerType(
                     LLVMFunctionType(

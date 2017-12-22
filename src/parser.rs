@@ -100,16 +100,13 @@ named!(expr<NodeKind>,
 );
 
 named!(expr_let<NodeKind>, alt_complete!(
-    do_parse!(
+    ws!(do_parse!(
         tag!("let") >>
-        spaces >> 
         ws!(many0!(tag!("rec"))) >> // TODO: do not ignore rec
         name: alt!(funcdef | ident) >> 
         ws!(tag!("=")) >>
         exp: expr >>
-        spaces >>
         tag!("in") >> 
-        spaces >> 
         body: expr >>
         (match name {
             NodeKind::FuncDef(name, params) => NodeKind::LetFuncExpr(
@@ -124,35 +121,27 @@ named!(expr_let<NodeKind>, alt_complete!(
                                                ),
             _                               => panic!()
         })
-    ) |
-    do_parse!(
+    )) |
+    ws!(do_parse!(
         tag!("let") >>
-        opt_spaces >> 
         tag!("(") >>
-        opt_spaces >> 
         p: pat >> 
-        opt_spaces >> 
         tag!(")") >>
-        opt_spaces >> 
         ws!(tag!("=")) >>
         exp: expr >>
-        spaces >>
         tag!("in") >> 
-        spaces >> 
         body: expr >>
         (NodeKind::LetTupleExpr(p, Box::new(exp), Box::new(body)))
-    )
+    ))
     )
 );
 
 named!(expr_semicolon<NodeKind>,
-    do_parse!(
+    ws!(do_parse!(
         init: expr_if >> 
         res:  fold_many0!(
                 do_parse!(
-                    opt_spaces >> 
                     op: tag!(";") >> 
-                    opt_spaces >> 
                     rhs: expr >> 
                     (rhs)
                 ),
@@ -161,58 +150,49 @@ named!(expr_semicolon<NodeKind>,
                     NodeKind::LetExpr(("_".to_string(), Type::Var(0)), Box::new(e1), Box::new(e2))
                 }
         ) >> (res)
-    )
+    ))
 );
 
 named!(expr_if<NodeKind>, alt_complete!(
-    do_parse!(
+    ws!(do_parse!(
         tag!("if") >>
-        spaces >> 
         e1: expr >>
-        spaces >> 
         tag!("then") >>
-        spaces >> 
         e2: expr >>
-        spaces >> 
         tag!("else") >>
-        spaces >> 
         e3: expr >>
         (NodeKind::IfExpr(Box::new(e1), Box::new(e2), Box::new(e3)))
-    )
+    ))
     | expr_comma
     )
 );
 
 named!(expr_comma<NodeKind>, alt_complete!(
-    do_parse!(
+    ws!(do_parse!(
         init: expr_comp >> 
         res:  fold_many1!(
                 do_parse!(
-                    opt_spaces >> 
                     tag!(",") >> 
-                    opt_spaces >> 
                     rhs: expr_comp >> 
                     (rhs)
                 ),
                 vec![init],
                 |mut acc: Vec<NodeKind>, e| { acc.push(e); acc }
         ) >> (NodeKind::Tuple(res))
-    )
+    ))
     | expr_comp
     )
 );
 
 named!(expr_comp<NodeKind>,
-    do_parse!(
+    ws!(do_parse!(
         init: expr_add_sub >> 
         res:  fold_many0!(
                 do_parse!(
-                    opt_spaces >> 
                     op: alt!(
                         tag!("<>") | tag!("==") | tag!("!=") |
                         tag!("<=") | tag!(">=") | tag!("<") | tag!(">") | tag!("=")
                         ) >>
-                    opt_spaces >> 
                     rhs: expr_add_sub >> 
                     (op, rhs)
                 ),
@@ -221,18 +201,16 @@ named!(expr_comp<NodeKind>,
                     NodeKind::CompBinaryOp(node::str_to_comp_binop(str::from_utf8(op).unwrap()), Box::new(n1), Box::new(n2)) 
                 }
         ) >> (res)
-    )
+    ))
 );
 
 
 named!(expr_add_sub<NodeKind>,
-    do_parse!(
+    ws!(do_parse!(
         init: expr_mul_div >> 
         res:  fold_many0!(
                 do_parse!(
-                    opt_spaces >> 
                     op: alt!(tag!("+.") | tag!("-.") | tag!("+") | tag!("-")) >> 
-                    opt_spaces >> 
                     rhs: expr_mul_div >> 
                     (op, rhs)
                 ),
@@ -243,17 +221,15 @@ named!(expr_add_sub<NodeKind>,
                     else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
                 }
         ) >> (res)
-    )
+    ))
 );
 
 named!(expr_mul_div<NodeKind>,
-    do_parse!(
+    ws!(do_parse!(
         init: expr_unary >> 
         res:  fold_many0!(
                 do_parse!(
-                    opt_spaces >> 
                     op: alt!(tag!("mod") | tag!("*.") | tag!("/.") | tag!("*") | tag!("/")) >> 
-                    opt_spaces >> 
                     rhs: expr_unary >> 
                     (op, rhs)
                 ),
@@ -264,15 +240,13 @@ named!(expr_mul_div<NodeKind>,
                     else { NodeKind::FloatBinaryOp(op, Box::new(n1), Box::new(n2)) }
                 }
         ) >> (res)
-    )
+    ))
 );
 
 named!(expr_unary<NodeKind>,
-    alt!(
+    ws!(alt!(
         do_parse!(
-            opt_spaces >> 
             op: alt!(tag!("-.") | tag!("-")) >> 
-            opt_spaces >> 
             e: expr_unary >> 
             ({
                 let (op, is_int) = node::str_to_unaryop(str::from_utf8(op).unwrap());
@@ -281,7 +255,7 @@ named!(expr_unary<NodeKind>,
             })
         ) | 
         expr_postfix
-    )
+    ))
 );
 
 named!(apply_postfix<Vec<NodeKind>>, do_parse!(
@@ -374,24 +348,21 @@ named!(opt_dscolon<()>, do_parse!(
 
 #[macro_export]
 named!(pub module_item<NodeKind>,
-    do_parse!(
-        ws!(opt_dscolon) >> 
+    ws!(do_parse!(
         i: alt!(expr | definition) >> 
-        opt_spaces >> 
         opt_dscolon >> (i)
-    )
+    ))
 );
 
 named!(definition<NodeKind>,
     alt!(
-        definition_let 
+        ws!(definition_let)
     )
 );
 
 named!(definition_let<NodeKind>,
-    do_parse!(
+    ws!(do_parse!(
         tag!("let") >>
-        spaces >> 
         name: alt!(funcdef | ident) >> 
         ws!(tag!("=")) >>
         exp: expr >>
@@ -405,7 +376,7 @@ named!(definition_let<NodeKind>,
                                                ),
             _                               => panic!()
         })
-    )
+    ))
 );
 
 pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {

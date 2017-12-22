@@ -31,7 +31,7 @@ pub enum Closure {
     AppDir(Box<Closure>, Vec<Closure>),
     LetExpr((String, Type), Box<Closure>, Box<Closure>), // (name, ty), bound expr, body
     LetTupleExpr(Vec<(String, Type)>, Box<Closure>, Box<Closure>), // tuples, bound expr, body
-    If(Box<Closure>, Box<Closure>, Box<Closure>), // cond, then, else
+    If(Box<Closure>, Box<Closure>, Box<Closure>),        // cond, then, else
     MakeCls(String, Type, Cls, Box<Closure>),
 }
 
@@ -140,34 +140,26 @@ fn g(
         NodeKind::Float(f) => Closure::Float(OrderedFloat::from(f)),
         NodeKind::Ident(name) => Closure::Var(name),
         NodeKind::Tuple(es) => Closure::Tuple(seq!(es)),
-        NodeKind::IntBinaryOp(op, lhs, rhs) => {
-            Closure::IntBinaryOp(
-                op,
-                Box::new(g(*lhs, env, known, toplevel)),
-                Box::new(g(*rhs, env, known, toplevel)),
-            )
-        }
-        NodeKind::FloatBinaryOp(op, lhs, rhs) => {
-            Closure::FloatBinaryOp(
-                op,
-                Box::new(g(*lhs, env, known, toplevel)),
-                Box::new(g(*rhs, env, known, toplevel)),
-            )
-        }
-        NodeKind::CompBinaryOp(op, lhs, rhs) => {
-            Closure::CompBinaryOp(
-                op,
-                Box::new(g(*lhs, env, known, toplevel)),
-                Box::new(g(*rhs, env, known, toplevel)),
-            )
-        }
-        NodeKind::IfExpr(cond, then, els) => {
-            Closure::If(
-                Box::new(g(*cond, env, known, toplevel)),
-                Box::new(g(*then, env, known, toplevel)),
-                Box::new(g(*els, env, known, toplevel)),
-            )
-        }
+        NodeKind::IntBinaryOp(op, lhs, rhs) => Closure::IntBinaryOp(
+            op,
+            Box::new(g(*lhs, env, known, toplevel)),
+            Box::new(g(*rhs, env, known, toplevel)),
+        ),
+        NodeKind::FloatBinaryOp(op, lhs, rhs) => Closure::FloatBinaryOp(
+            op,
+            Box::new(g(*lhs, env, known, toplevel)),
+            Box::new(g(*rhs, env, known, toplevel)),
+        ),
+        NodeKind::CompBinaryOp(op, lhs, rhs) => Closure::CompBinaryOp(
+            op,
+            Box::new(g(*lhs, env, known, toplevel)),
+            Box::new(g(*rhs, env, known, toplevel)),
+        ),
+        NodeKind::IfExpr(cond, then, els) => Closure::If(
+            Box::new(g(*cond, env, known, toplevel)),
+            Box::new(g(*then, env, known, toplevel)),
+            Box::new(g(*els, env, known, toplevel)),
+        ),
         // LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
         NodeKind::LetExpr((name, ty), expr, body) => {
             let mut cp_env = env.clone();
@@ -179,12 +171,14 @@ fn g(
             )
         }
 
-        NodeKind::LetFuncExpr(node::FuncDef {
-                                  name: (x, t),
-                                  params,
-                              },
-                              expr,
-                              body) => {
+        NodeKind::LetFuncExpr(
+            node::FuncDef {
+                name: (x, t),
+                params,
+            },
+            expr,
+            body,
+        ) => {
             // /* Follow the original code */
             let mut toplevel_cp = toplevel.clone();
             let mut env_p = env.clone();

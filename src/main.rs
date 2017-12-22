@@ -2,7 +2,7 @@ extern crate rcaml;
 use rcaml::parser;
 
 extern crate clap;
-use clap::{Arg, App};
+use clap::{App, Arg};
 
 extern crate ansi_term;
 use self::ansi_term::{Colour, Style};
@@ -54,9 +54,12 @@ fn main() {
         .version(VERSION_STR)
         .author("uint256_t")
         .about("rcaml is an OCaml-like language implementation in Rust")
-        .arg(Arg::with_name("version").short("v").long("version").help(
-            "Show version info",
-        ))
+        .arg(
+            Arg::with_name("version")
+                .short("v")
+                .long("version")
+                .help("Show version info"),
+        )
         .arg(Arg::with_name("FILE")
                 .help("Input file")
                 // .required(true)
@@ -76,12 +79,12 @@ fn main() {
                     Style::new().underline().paint(filename)
                 );
                 ::std::process::exit(0)
-            } 
+            }
         };
         let mut file_body = "".to_string();
-        file.read_to_string(&mut file_body).ok().expect(
-            "error while reading file",
-        );
+        file.read_to_string(&mut file_body)
+            .ok()
+            .expect("error while reading file");
         run(file_body.trim());
     } else {
         parser::parse_and_show_simple_expr("5 / a3 + 11 * 10");

@@ -14,8 +14,8 @@ pub enum NodeKind {
     LetExpr((String, typing::Type), Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
     LetTupleExpr(Vec<(String, typing::Type)>, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
     LetFuncExpr(FuncDef, Box<NodeKind>, Box<NodeKind>), // (name, ty), bound expr, body
-    LetDef((String, typing::Type), Box<NodeKind>), // name, bound expr
-    LetFuncDef(FuncDef, Box<NodeKind>), // name, bound expr
+    LetDef((String, typing::Type), Box<NodeKind>),      // name, bound expr
+    LetFuncDef(FuncDef, Box<NodeKind>),                 // name, bound expr
     IntUnaryOp(UnaryOps, Box<NodeKind>),
     FloatUnaryOp(UnaryOps, Box<NodeKind>),
     IntBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),

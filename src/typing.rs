@@ -1,7 +1,7 @@
 use std::boxed::Box;
 use std::collections::{HashMap, HashSet};
 
-use node::{NodeKind, FuncDef};
+use node::{FuncDef, NodeKind};
 use id;
 
 use parser::EXTENV;
@@ -15,7 +15,7 @@ pub enum Type {
     Char,
     Tuple(Vec<Type>),
     Func(Vec<Type>, Box<Type>), // (param types, return type, is type inference complete?)
-    Var(usize), // id
+    Var(usize),                 // id
 }
 
 impl Type {
@@ -30,32 +30,30 @@ impl Type {
             &Type::Char => "char".to_string(),
             &Type::Int => "int".to_string(),
             &Type::Float => "float".to_string(),
-            &Type::Tuple(ref et) => {
-                format!(
-                    "({})",
-                    et.into_iter()
-                        .fold("".to_string(), |acc, t| {
-                            acc + t.to_string_sub(i, m).as_str() + " * "
-                        })
-                        .trim_right_matches(" * ")
-                )
-            }
+            &Type::Tuple(ref et) => format!(
+                "({})",
+                et.into_iter()
+                    .fold(
+                        "".to_string(),
+                        |acc, t| acc + t.to_string_sub(i, m).as_str() + " * "
+                    )
+                    .trim_right_matches(" * ")
+            ),
             &Type::Func(ref param_tys, ref ret_ty) => {
                 macro_rules! name { ($id:expr) => ( format!("\'{}", m.entry($id).or_insert_with(|| { *i += 1; *i }).clone()) ) };
                 format!(
                     "({})",
-                    param_tys.into_iter().fold("".to_string(), |acc, ts| {
-                        acc +
-                            match *ts {
-                                Type::Var(id) => name!(id),
-                                _ => ts.to_string_sub(i, m),
-                            }.as_str() + " -> "
-                    }) +
-                        if let Type::Var(id) = **ret_ty {
-                            name!(id)
-                        } else {
-                            ret_ty.to_string_sub(i, m)
+                    param_tys
+                        .into_iter()
+                        .fold("".to_string(), |acc, ts| acc + match *ts {
+                            Type::Var(id) => name!(id),
+                            _ => ts.to_string_sub(i, m),
                         }.as_str()
+                            + " -> ") + if let Type::Var(id) = **ret_ty {
+                        name!(id)
+                    } else {
+                        ret_ty.to_string_sub(i, m)
+                    }.as_str()
                 )
             }
             &Type::Var(id) => format!("var({})", id),
@@ -116,38 +114,30 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
         ($ary:expr) => ($ary.iter().map(|x| deref_term(x, tyenv)).collect::<Vec<_>>());
     }
     match *node {
-        NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => {
-            NodeKind::IntBinaryOp(
-                op.clone(),
-                Box::new(deref_term(&**lhs, tyenv)),
-                Box::new(deref_term(&**rhs, tyenv)),
-            )
-        }
-        NodeKind::FloatBinaryOp(ref op, ref lhs, ref rhs) => {
-            NodeKind::FloatBinaryOp(
-                op.clone(),
-                Box::new(deref_term(&**lhs, tyenv)),
-                Box::new(deref_term(&**rhs, tyenv)),
-            )
-        }
-        NodeKind::CompBinaryOp(ref op, ref lhs, ref rhs) => {
-            NodeKind::CompBinaryOp(
-                op.clone(),
-                Box::new(deref_term(&**lhs, tyenv)),
-                Box::new(deref_term(&**rhs, tyenv)),
-            )
-        }
+        NodeKind::IntBinaryOp(ref op, ref lhs, ref rhs) => NodeKind::IntBinaryOp(
+            op.clone(),
+            Box::new(deref_term(&**lhs, tyenv)),
+            Box::new(deref_term(&**rhs, tyenv)),
+        ),
+        NodeKind::FloatBinaryOp(ref op, ref lhs, ref rhs) => NodeKind::FloatBinaryOp(
+            op.clone(),
+            Box::new(deref_term(&**lhs, tyenv)),
+            Box::new(deref_term(&**rhs, tyenv)),
+        ),
+        NodeKind::CompBinaryOp(ref op, ref lhs, ref rhs) => NodeKind::CompBinaryOp(
+            op.clone(),
+            Box::new(deref_term(&**lhs, tyenv)),
+            Box::new(deref_term(&**rhs, tyenv)),
+        ),
         NodeKind::Tuple(ref es) => NodeKind::Tuple(deref_seq!(es)),
         NodeKind::Call(ref e, ref args) => {
             NodeKind::Call(Box::new(deref_term(e, tyenv)), deref_seq!(args))
         }
-        NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => {
-            NodeKind::LetExpr(
-                (name.clone(), deref_ty(ty, tyenv)),
-                Box::new(deref_term(&**expr, tyenv)),
-                Box::new(deref_term(&**body, tyenv)),
-            )
-        }
+        NodeKind::LetExpr((ref name, ref ty), ref expr, ref body) => NodeKind::LetExpr(
+            (name.clone(), deref_ty(ty, tyenv)),
+            Box::new(deref_term(&**expr, tyenv)),
+            Box::new(deref_term(&**body, tyenv)),
+        ),
         NodeKind::LetFuncExpr(ref funcdef, ref expr, ref body) => {
             let (ref name, ref ty) = funcdef.name;
             let params = &funcdef.params;
@@ -173,12 +163,10 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
                 Box::new(deref_term(body, tyenv)),
             )
         }
-        NodeKind::LetDef((ref name, ref ty), ref expr) => {
-            NodeKind::LetDef(
-                (name.clone(), deref_ty(ty, tyenv)),
-                Box::new(deref_term(&**expr, tyenv)),
-            )
-        }
+        NodeKind::LetDef((ref name, ref ty), ref expr) => NodeKind::LetDef(
+            (name.clone(), deref_ty(ty, tyenv)),
+            Box::new(deref_term(&**expr, tyenv)),
+        ),
         NodeKind::LetFuncDef(ref funcdef, ref expr) => {
             let (ref name, ref ty) = funcdef.name;
             let params = &funcdef.params;
@@ -193,13 +181,11 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
                 Box::new(deref_term(expr, tyenv)),
             )
         }
-        NodeKind::IfExpr(ref cond, ref then_, ref else_) => {
-            NodeKind::IfExpr(
-                Box::new(deref_term(cond, tyenv)),
-                Box::new(deref_term(then_, tyenv)),
-                Box::new(deref_term(else_, tyenv)),
-            )
-        }
+        NodeKind::IfExpr(ref cond, ref then_, ref else_) => NodeKind::IfExpr(
+            Box::new(deref_term(cond, tyenv)),
+            Box::new(deref_term(then_, tyenv)),
+            Box::new(deref_term(else_, tyenv)),
+        ),
         _ => node.clone(),
     }
 }
@@ -216,7 +202,6 @@ fn occur(r1: usize, ty: &Type) -> bool {
         _ => false,
     }
 }
-
 
 pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(), TypeError> {
     match (t1, t2) {
@@ -266,7 +251,7 @@ fn subst(ty: Type, tyenv: &mut HashMap<usize, Type>, map: HashMap<usize, Type>) 
         ($es:expr) => ({
             let mut argtys = Vec::new();
             for e in $es.iter() { argtys.push(subst(e.clone(), tyenv, map.clone())); }
-            argtys 
+            argtys
         });
     }
     match ty {
@@ -371,7 +356,7 @@ pub fn g(
         ($es:expr) => ({
             let mut argtys = Vec::new();
             for e in $es.iter() { argtys.push(try!(g(e, env, tyenv, idgen))); }
-            argtys 
+            argtys
         });
     }
 
@@ -446,9 +431,7 @@ pub fn g(
         NodeKind::LetTupleExpr(ref es, ref expr, ref body) => {
             try!(unify(
                 &try!(g(expr, &env, tyenv, idgen)),
-                &Type::Tuple(
-                    es.iter().map(|e| e.1.clone()).collect::<Vec<_>>(),
-                ),
+                &Type::Tuple(es.iter().map(|e| e.1.clone()).collect::<Vec<_>>(),),
                 tyenv,
             ));
             let mut newenv = env.clone();
@@ -480,10 +463,10 @@ pub fn g(
                 tyenv,
             );
             try!(unify(&ty, &newty, tyenv));
-            EXTENV.lock().unwrap().insert(
-                name.clone(),
-                generalize(newty, env, tyenv),
-            );
+            EXTENV
+                .lock()
+                .unwrap()
+                .insert(name.clone(), generalize(newty, env, tyenv));
             Ok(Type::Unit)
         }
         NodeKind::IfExpr(ref cond, ref then_, ref else_) => {

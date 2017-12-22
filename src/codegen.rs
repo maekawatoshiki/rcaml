@@ -38,8 +38,7 @@ impl ValKind {
     }
     unsafe fn retrieve(&self) -> LLVMValueRef {
         match self {
-            &ValKind::Load(v) |
-            &ValKind::Other(v) => v,
+            &ValKind::Load(v) | &ValKind::Other(v) => v,
         }
     }
 }
@@ -83,7 +82,6 @@ pub extern "C" fn float_of_int(i: i32) -> f64 {
     i as f64
 }
 
-
 unsafe fn cur_bb_has_no_terminator(builder: LLVMBuilderRef) -> bool {
     LLVMIsATerminatorInst(LLVMGetLastInstruction(LLVMGetInsertBlock(builder))) == ptr::null_mut()
 }
@@ -103,15 +101,11 @@ impl<'a> CodeGen<'a> {
 
         let mut ee = 0 as llvm::execution_engine::LLVMExecutionEngineRef;
         let mut error = 0 as *mut i8;
-        if llvm::execution_engine::LLVMCreateExecutionEngineForModule(
-            &mut ee,
-            module,
-            &mut error,
-        ) != 0
+        if llvm::execution_engine::LLVMCreateExecutionEngineForModule(&mut ee, module, &mut error)
+            != 0
         {
             panic!("err");
         }
-
 
         let mut ext_funcmap = HashMap::new();
         // initialize standard functions
@@ -467,12 +461,8 @@ impl<'a> CodeGen<'a> {
     ) -> CodeGenResult<LLVMValueRef> {
         let mut newenv = env.clone();
         let llvm_expr_val = try!(self.gen_expr(env, cur_fun, expr));
-        let var = try!(self.declare_local_var(
-            &mut newenv,
-            cur_fun,
-            name,
-            LLVMTypeOf(llvm_expr_val),
-        ));
+        let var =
+            try!(self.declare_local_var(&mut newenv, cur_fun, name, LLVMTypeOf(llvm_expr_val),));
         LLVMBuildStore(self.builder, llvm_expr_val, var);
         self.gen_expr(&newenv, cur_fun, body)
     }
@@ -489,12 +479,10 @@ impl<'a> CodeGen<'a> {
         let llvm_expr_val = try!(self.gen_expr(env, cur_fun, expr));
         for (i, &(ref name, ref ty)) in xs.iter().enumerate() {
             let llvm_elem_val = try!(self.llvm_struct_elem_extract(llvm_expr_val, i as u32));
-            let var = try!(self.declare_local_var(
-                &mut newenv,
-                cur_fun,
-                name,
-                LLVMTypeOf(llvm_elem_val),
-            ));
+            let var =
+                try!(
+                    self.declare_local_var(&mut newenv, cur_fun, name, LLVMTypeOf(llvm_elem_val),)
+                );
             LLVMBuildStore(self.builder, llvm_elem_val, var);
         }
         self.gen_expr(&newenv, cur_fun, body)
@@ -585,12 +573,7 @@ impl<'a> CodeGen<'a> {
     ) -> CodeGenResult<LLVMValueRef> {
         Ok(LLVMBuildLoad(
             self.builder,
-            LLVMBuildStructGEP(
-                self.builder,
-                p,
-                idx,
-                CString::new("").unwrap().as_ptr(),
-            ),
+            LLVMBuildStructGEP(self.builder, p, idx, CString::new("").unwrap().as_ptr()),
             CString::new("").unwrap().as_ptr(),
         ))
     }
@@ -743,46 +726,36 @@ impl<'a> CodeGen<'a> {
         let lhs_val = try!(self.gen_expr(env, cur_fun, lhs));
         let rhs_val = try!(self.gen_expr(env, cur_fun, rhs));
         match op {
-            &BinOps::IAdd => {
-                Ok(LLVMBuildAdd(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("add"),
-                ))
-            }
-            &BinOps::ISub => {
-                Ok(LLVMBuildSub(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("sub"),
-                ))
-            }
-            &BinOps::IMul => {
-                Ok(LLVMBuildMul(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("mul"),
-                ))
-            }
-            &BinOps::IDiv => {
-                Ok(LLVMBuildSDiv(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("div"),
-                ))
-            }
-            &BinOps::IMod => {
-                Ok(LLVMBuildSRem(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("rem"),
-                ))
-            }
+            &BinOps::IAdd => Ok(LLVMBuildAdd(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("add"),
+            )),
+            &BinOps::ISub => Ok(LLVMBuildSub(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("sub"),
+            )),
+            &BinOps::IMul => Ok(LLVMBuildMul(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("mul"),
+            )),
+            &BinOps::IDiv => Ok(LLVMBuildSDiv(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("div"),
+            )),
+            &BinOps::IMod => Ok(LLVMBuildSRem(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("rem"),
+            )),
             _ => panic!("not implemented"),
         }
     }
@@ -799,38 +772,30 @@ impl<'a> CodeGen<'a> {
         let lhs_val = try!(self.gen_expr(env, cur_fun, lhs));
         let rhs_val = try!(self.gen_expr(env, cur_fun, rhs));
         match op {
-            &BinOps::FAdd => {
-                Ok(LLVMBuildFAdd(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("fadd"),
-                ))
-            }
-            &BinOps::FSub => {
-                Ok(LLVMBuildFSub(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("fsub"),
-                ))
-            }
-            &BinOps::FMul => {
-                Ok(LLVMBuildFMul(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("fmul"),
-                ))
-            }
-            &BinOps::FDiv => {
-                Ok(LLVMBuildFDiv(
-                    self.builder,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("fdiv"),
-                ))
-            }
+            &BinOps::FAdd => Ok(LLVMBuildFAdd(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("fadd"),
+            )),
+            &BinOps::FSub => Ok(LLVMBuildFSub(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("fsub"),
+            )),
+            &BinOps::FMul => Ok(LLVMBuildFMul(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("fmul"),
+            )),
+            &BinOps::FDiv => Ok(LLVMBuildFDiv(
+                self.builder,
+                lhs_val,
+                rhs_val,
+                inst_name("fdiv"),
+            )),
             _ => panic!("not implemented"),
         }
     }
@@ -847,60 +812,48 @@ impl<'a> CodeGen<'a> {
         let lhs_val = try!(self.gen_expr(env, cur_fun, lhs));
         let rhs_val = try!(self.gen_expr(env, cur_fun, rhs));
         match op {
-            &CompBinOps::SEq => {
-                Ok(LLVMBuildICmp(
-                    self.builder,
-                    llvm::LLVMIntPredicate::LLVMIntEQ,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("eq"),
-                ))
-            }
-            &CompBinOps::SNe => {
-                Ok(LLVMBuildICmp(
-                    self.builder,
-                    llvm::LLVMIntPredicate::LLVMIntNE,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("ne"),
-                ))
-            }
-            &CompBinOps::Lt => {
-                Ok(LLVMBuildICmp(
-                    self.builder,
-                    llvm::LLVMIntPredicate::LLVMIntSLT,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("lt"),
-                ))
-            }
-            &CompBinOps::Le => {
-                Ok(LLVMBuildICmp(
-                    self.builder,
-                    llvm::LLVMIntPredicate::LLVMIntSLE,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("le"),
-                ))
-            }
-            &CompBinOps::Gt => {
-                Ok(LLVMBuildICmp(
-                    self.builder,
-                    llvm::LLVMIntPredicate::LLVMIntSGT,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("gt"),
-                ))
-            }
-            &CompBinOps::Ge => {
-                Ok(LLVMBuildICmp(
-                    self.builder,
-                    llvm::LLVMIntPredicate::LLVMIntSGE,
-                    lhs_val,
-                    rhs_val,
-                    inst_name("ge"),
-                ))
-            }
+            &CompBinOps::SEq => Ok(LLVMBuildICmp(
+                self.builder,
+                llvm::LLVMIntPredicate::LLVMIntEQ,
+                lhs_val,
+                rhs_val,
+                inst_name("eq"),
+            )),
+            &CompBinOps::SNe => Ok(LLVMBuildICmp(
+                self.builder,
+                llvm::LLVMIntPredicate::LLVMIntNE,
+                lhs_val,
+                rhs_val,
+                inst_name("ne"),
+            )),
+            &CompBinOps::Lt => Ok(LLVMBuildICmp(
+                self.builder,
+                llvm::LLVMIntPredicate::LLVMIntSLT,
+                lhs_val,
+                rhs_val,
+                inst_name("lt"),
+            )),
+            &CompBinOps::Le => Ok(LLVMBuildICmp(
+                self.builder,
+                llvm::LLVMIntPredicate::LLVMIntSLE,
+                lhs_val,
+                rhs_val,
+                inst_name("le"),
+            )),
+            &CompBinOps::Gt => Ok(LLVMBuildICmp(
+                self.builder,
+                llvm::LLVMIntPredicate::LLVMIntSGT,
+                lhs_val,
+                rhs_val,
+                inst_name("gt"),
+            )),
+            &CompBinOps::Ge => Ok(LLVMBuildICmp(
+                self.builder,
+                llvm::LLVMIntPredicate::LLVMIntSGE,
+                lhs_val,
+                rhs_val,
+                inst_name("ge"),
+            )),
             // TODO: more ops!
             _ => panic!("not supported"),
         }
@@ -1039,17 +992,15 @@ impl Type {
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),
-            &Type::Tuple(ref xs) => {
-                LLVMStructType(
-                    xs.iter()
-                        .map(|ref x| x.to_llvmty_sub())
-                        .collect::<Vec<_>>()
-                        .as_mut_slice()
-                        .as_mut_ptr(),
-                    xs.len() as u32,
-                    0,
-                )
-            }
+            &Type::Tuple(ref xs) => LLVMStructType(
+                xs.iter()
+                    .map(|ref x| x.to_llvmty_sub())
+                    .collect::<Vec<_>>()
+                    .as_mut_slice()
+                    .as_mut_ptr(),
+                xs.len() as u32,
+                0,
+            ),
             &Type::Func(ref params_ty, ref ret_ty) => {
                 LLVMFunctionType(
                     ret_ty.to_llvmty_sub(),
@@ -1076,17 +1027,15 @@ impl Type {
             &Type::Char => LLVMInt8Type(),
             &Type::Int => LLVMInt32Type(),
             &Type::Float => LLVMDoubleType(),
-            &Type::Tuple(ref xs) => {
-                LLVMStructType(
-                    xs.iter()
-                        .map(|ref x| x.to_llvmty_sub())
-                        .collect::<Vec<_>>()
-                        .as_mut_slice()
-                        .as_mut_ptr(),
-                    xs.len() as u32,
-                    0,
-                )
-            }
+            &Type::Tuple(ref xs) => LLVMStructType(
+                xs.iter()
+                    .map(|ref x| x.to_llvmty_sub())
+                    .collect::<Vec<_>>()
+                    .as_mut_slice()
+                    .as_mut_ptr(),
+                xs.len() as u32,
+                0,
+            ),
             &Type::Func(ref params_ty, ref ret_ty) => {
                 let fty = LLVMPointerType(
                     LLVMFunctionType(

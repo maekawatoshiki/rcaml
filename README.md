@@ -5,3 +5,7 @@
 
 - rcaml is an OCaml-like language implementation in Rust
 
+# Current status
+
+aiming MinCaml
+

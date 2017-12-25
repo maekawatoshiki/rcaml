@@ -145,8 +145,42 @@ named!(
         ws!(do_parse!(
             tag!("if") >> e1: expr >> tag!("then") >> e2: expr >> tag!("else") >> e3: expr
                 >> (NodeKind::IfExpr(Box::new(e1), Box::new(e2), Box::new(e3)))
+        )) | expr_assign
+    )
+);
+
+named!(
+    expr_assign<NodeKind>,
+    alt_complete!(
+        ws!(do_parse!(
+            base_indices: array_index_list >> tag!("<-") >> e: expr_comma >> ({
+                let (mut base, mut indices) = base_indices;
+                let last = indices.pop().unwrap(); // indices.len() >= 1
+                for idx in indices {
+                    base = NodeKind::Get(Box::new(base), Box::new(idx));
+                }
+                NodeKind::Put(Box::new(base), Box::new(last), Box::new(e))
+            })
         )) | expr_comma
     )
+);
+
+named!(
+    array_index_list<(NodeKind, Vec<NodeKind>)>,
+    ws!(do_parse!(
+        init: expr_prim
+            >> res:
+                fold_many1!(
+                    ws!(do_parse!(
+                        char!('.') >> char!('(') >> res: expr >> char!(')') >> (res)
+                    )),
+                    Vec::new(),
+                    |mut acc: Vec<NodeKind>, index| {
+                        acc.push(index);
+                        acc
+                    }
+                ) >> ((init, res))
+    ))
 );
 
 named!(
@@ -260,13 +294,24 @@ named!(
 
 named!(
     expr_postfix<NodeKind>,
-    do_parse!(
-        init: expr_prim
-            >> folded:
-                fold_many0!(apply_postfix, init, |lhs, pf| NodeKind::Call(
-                    Box::new(lhs),
-                    pf
-                )) >> (folded)
+    alt_complete!(
+        ws!(do_parse!(
+            alt_complete!(tag!("Array.create") | tag!("Array.make")) >> res: many1!(ws!(expr_prim))
+                >> ({
+                    let mut res = res;
+                    if res.len() != 2 {
+                        panic!("The number of Array.create is wrong");
+                    }
+                    let res1 = res.pop().unwrap();
+                    let res0 = res.pop().unwrap();
+                    NodeKind::MakeArray(Box::new(res0), Box::new(res1))
+                })
+        ))
+            | ws!(do_parse!(
+                init: expr_prim >> folded: fold_many0!(apply_postfix, init, |lhs, pf| {
+                    NodeKind::Call(Box::new(lhs), pf)
+                }) >> (folded)
+            ))
     )
 );
 
@@ -502,6 +547,22 @@ pub fn uniquify(expr: NodeKind, idgen: &mut IdGen) -> NodeKind {
             Box::new(uniquify(*t, idgen)),
             Box::new(uniquify(*e, idgen)),
         ),
+        NodeKind::MakeArray(e1, e2) => {
+            let e1 = Box::new(uniquify(*e1, idgen));
+            let e2 = Box::new(uniquify(*e2, idgen));
+            NodeKind::MakeArray(e1, e2)
+        }
+        NodeKind::Get(e1, e2) => {
+            let e1 = Box::new(uniquify(*e1, idgen));
+            let e2 = Box::new(uniquify(*e2, idgen));
+            NodeKind::Get(e1, e2)
+        }
+        NodeKind::Put(e1, e2, e3) => {
+            let e1 = Box::new(uniquify(*e1, idgen));
+            let e2 = Box::new(uniquify(*e2, idgen));
+            let e3 = Box::new(uniquify(*e3, idgen));
+            NodeKind::Put(e1, e2, e3)
+        }
         x => x, // No Syntax inside
     }
 }

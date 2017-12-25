@@ -44,7 +44,7 @@ pub fn run(e: &str) {
 
     unsafe {
         let mut codegen = codegen::CodeGen::new(&mut tyenv);
-        codegen.gen(false, false, progs.clone()).unwrap();
+        codegen.gen(true, false, progs.clone()).unwrap();
         codegen.run_module()
     }
 }
@@ -99,28 +99,28 @@ fn main() {
         parser::parse_and_show_module_item("let f x = x * 2;;");
         parser::parse_and_show_module_item("let t = 1, 2 in t");
 
-        parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
-        parser::parse_and_infer_type("let f x = if x then 1 else let a = f (x - 1) in a in f 5");
-        parser::parse_and_infer_type(
-            "let f x = x in let f = f in let a = f 2.3 in let b = f 1 in a",
-        );
-        parser::parse_and_infer_type(
-            "let f x = if x then 1 else let a = f (x - 1) in a + 1 in let b = f 1 in b",
-        );
-        parser::parse_and_infer_type("let f x = if x + 1 then f x else f x in 1");
-        parser::parse_and_infer_type(
-            "let f a b = let g c = a = c in g b in let a = f 1 2 in let b = f 1.2 2.3 in b",
-        );
-        parser::parse_and_infer_type("let id x = x in let f y = id (y id) in let f = f in f");
-        parser::parse_and_infer_type("let t = 1, 2.3, true in t");
-        parser::parse_and_infer_type("let (a, b, c) = 1, 2.3, false in a + b + c");
-
-        parser::parse_and_infer_type_and_closure_conv("let f x = let g y = x + y in g 3 in f 1");
-        parser::parse_and_infer_type_and_closure_conv(
-            "let fact x = if x = 1 then 1 else x * (fact (x - 1)) in print_int (fact 10)",
-        );
-        parser::parse_and_infer_type_and_closure_conv("let t = 1, 2.3, false in t");
-        parser::parse_and_infer_type_and_closure_conv("let (a, b, c) = 1, 2.3, false in a + b + c");
+        // parser::parse_and_infer_type("let x = 1 + 2 in x + 1");
+        // parser::parse_and_infer_type("let f x = if x then 1 else let a = f (x - 1) in a in f 5");
+        // parser::parse_and_infer_type(
+        //     "let f x = x in let f = f in let a = f 2.3 in let b = f 1 in a",
+        // );
+        // parser::parse_and_infer_type(
+        //     "let f x = if x then 1 else let a = f (x - 1) in a + 1 in let b = f 1 in b",
+        // );
+        // parser::parse_and_infer_type("let f x = if x + 1 then f x else f x in 1");
+        // parser::parse_and_infer_type(
+        //     "let f a b = let g c = a = c in g b in let a = f 1 2 in let b = f 1.2 2.3 in b",
+        // );
+        // parser::parse_and_infer_type("let id x = x in let f y = id (y id) in let f = f in f");
+        // parser::parse_and_infer_type("let t = 1, 2.3, true in t");
+        // parser::parse_and_infer_type("let (a, b, c) = 1, 2.3, false in a + b + c");
+        //
+        // parser::parse_and_infer_type_and_closure_conv("let f x = let g y = x + y in g 3 in f 1");
+        // parser::parse_and_infer_type_and_closure_conv(
+        //     "let fact x = if x = 1 then 1 else x * (fact (x - 1)) in print_int (fact 10)",
+        // );
+        // parser::parse_and_infer_type_and_closure_conv("let t = 1, 2.3, false in t");
+        parser::parse_and_infer_type_and_closure_conv("let a = Array.create 5 0 in a.(0) <- 1");
 
         // let e = "let f x = x;; let a = f 1;; let b = f 2.2;;";
         // let e = "let a = 123;; print_int (a + 7);; print_newline ()";

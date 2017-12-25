@@ -22,6 +22,9 @@ pub enum NodeKind {
     FloatBinaryOp(BinOps, Box<NodeKind>, Box<NodeKind>),
     CompBinaryOp(CompBinOps, Box<NodeKind>, Box<NodeKind>),
     IfExpr(Box<NodeKind>, Box<NodeKind>, Box<NodeKind>), // cond, then, else
+    MakeArray(Box<NodeKind>, Box<NodeKind>),
+    Get(Box<NodeKind>, Box<NodeKind>),
+    Put(Box<NodeKind>, Box<NodeKind>, Box<NodeKind>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -417,6 +417,9 @@ impl<'a> CodeGen<'a> {
             &Closure::If(ref cond, ref then, ref els) => {
                 self.gen_if_expr(env, cur_fun, &*cond, &*then, &*els)
             }
+            // &Closure::MakeArray(ref len, ref val) => {
+            //     self.gen_make_array(env, cur_fun, &*len, &*val)
+            // }
             // &NodeKind:: FloatUnaryOp(UnaryOps, Box<NodeKind>)
             &Closure::Var(ref name) => self.gen_var_load(env, name),
             &Closure::Int(ref i) => self.gen_int(*i),
@@ -927,6 +930,16 @@ impl<'a> CodeGen<'a> {
 
         Ok(phi)
     }
+
+    // unsafe fn gen_make_array(
+    //     &mut self,
+    //     env: &HashMap<String, ValKind>,
+    //     cur_fun: Option<LLVMValueRef>,
+    //     len: &Closure,
+    //     val: &Closure,
+    // ) -> CodeGenResult<LLVMValueRef> {
+    //
+    // }
 
     unsafe fn lookup_var(
         &mut self,

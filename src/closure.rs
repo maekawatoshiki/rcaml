@@ -33,6 +33,9 @@ pub enum Closure {
     LetTupleExpr(Vec<(String, Type)>, Box<Closure>, Box<Closure>), // tuples, bound expr, body
     If(Box<Closure>, Box<Closure>, Box<Closure>),        // cond, then, else
     MakeCls(String, Type, Cls, Box<Closure>),
+    MakeArray(Box<Closure>, Box<Closure>),
+    Get(Box<Closure>, Box<Closure>),
+    Put(Box<Closure>, Box<Closure>, Box<Closure>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,16 +72,15 @@ fn fv(e: &Closure) -> HashSet<String> {
     match *e {
         Unit | Bool(_) | Int(_) | Float(_) => HashSet::new(),
         // Neg(ref x) | FNeg(ref x) => build_set!(x),
-        IntBinaryOp(_, ref x, ref y) |
-        FloatBinaryOp(_, ref x, ref y) |
-        CompBinaryOp(_, ref x, ref y) => {
+        IntBinaryOp(_, ref x, ref y)
+        | FloatBinaryOp(_, ref x, ref y)
+        | CompBinaryOp(_, ref x, ref y) => {
             let mut set = HashSet::new();
             for e in fv(x).union(&fv(y)).collect::<Vec<&String>>() {
                 set.insert(e.clone());
             }
             set
         }
-        // Get(ref x, ref y) => build_set!(x, y),
         If(ref c, ref t, ref e) => {
             let c = fv(c);
             let t = fv(t);
@@ -91,32 +93,33 @@ fn fv(e: &Closure) -> HashSet<String> {
             &s1 | &s2
         }
         Var(ref x) => build_set!(x),
-        MakeCls(ref x,
-                _,
-                Cls {
-                    entry: _,
-                    actual_fv: ref ys,
-                },
-                ref e) => &(&ys.iter().cloned().collect() | &fv(e)) - &build_set!(x),
+        MakeCls(
+            ref x,
+            _,
+            Cls {
+                entry: _,
+                actual_fv: ref ys,
+            },
+            ref e,
+        ) => &(&ys.iter().cloned().collect() | &fv(e)) - &build_set!(x),
         AppCls(ref x, ref args) => {
-            &fv(x) |
-                &seq!(args)
+            &fv(x)
+                | &seq!(args)
                     .iter()
                     .map(|v| (*v).clone())
                     .collect::<HashSet<_>>()
         }
-        AppDir(_, ref xs) |
-        Tuple(ref xs) => {
-            seq!(xs)
-                .iter()
-                .map(|y| (*y).clone())
-                .collect::<HashSet<_>>()
-        }
+        AppDir(_, ref xs) | Tuple(ref xs) => seq!(xs)
+            .iter()
+            .map(|y| (*y).clone())
+            .collect::<HashSet<_>>(),
         LetTupleExpr(ref es, ref expr, ref body) => {
             let tmp: HashSet<String> = es.iter().map(|e| e.0.clone()).collect();
             &fv(expr) | &(&fv(body) - &tmp)
         }
-        // Put(ref x, ref y, ref z) => build_set!(x, y, z),
+        MakeArray(ref x, ref y) => &fv(x) | &fv(y),
+        Get(ref x, ref y) => &fv(x) | &fv(y),
+        Put(ref x, ref y, ref z) => &(&fv(x) | &fv(y)) | &fv(z),
     }
 }
 
@@ -179,7 +182,6 @@ fn g(
             expr,
             body,
         ) => {
-            // /* Follow the original code */
             let mut toplevel_cp = toplevel.clone();
             let mut env_p = env.clone();
             env_p.insert(x.clone(), t.clone());
@@ -248,6 +250,20 @@ fn g(
                 Closure::AppCls(Box::new(g(*callee, env, known, toplevel)), seq!(args))
             }
         }
+
+        NodeKind::MakeArray(e1, e2) => Closure::MakeArray(
+            Box::new(g(*e1, env, known, toplevel)),
+            Box::new(g(*e2, env, known, toplevel)),
+        ),
+        NodeKind::Get(e1, e2) => Closure::Get(
+            Box::new(g(*e1, env, known, toplevel)),
+            Box::new(g(*e2, env, known, toplevel)),
+        ),
+        NodeKind::Put(e1, e2, e3) => Closure::Put(
+            Box::new(g(*e1, env, known, toplevel)),
+            Box::new(g(*e2, env, known, toplevel)),
+            Box::new(g(*e3, env, known, toplevel)),
+        ),
 
         _ => panic!(),
     }

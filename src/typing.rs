@@ -14,6 +14,7 @@ pub enum Type {
     Float,
     Char,
     Tuple(Vec<Type>),
+    Array(Box<Type>),
     Func(Vec<Type>, Box<Type>), // (param types, return type, is type inference complete?)
     Var(usize),                 // id
 }
@@ -39,6 +40,7 @@ impl Type {
                     )
                     .trim_right_matches(" * ")
             ),
+            &Type::Array(ref et) => format!("[{}]", et.to_string_sub(i, m)),
             &Type::Func(ref param_tys, ref ret_ty) => {
                 macro_rules! name { ($id:expr) => ( format!("\'{}", m.entry($id).or_insert_with(|| { *i += 1; *i }).clone()) ) };
                 format!(
@@ -96,7 +98,7 @@ fn deref_ty(ty: &Type, tyenv: &HashMap<usize, Type>) -> Type {
     match *ty {
         Type::Func(ref p, ref r) => Type::Func(deref_ty_seq!(p), Box::new(deref_ty(r, tyenv))),
         Type::Tuple(ref ts) => Type::Tuple(deref_ty_seq!(ts)),
-        // Type::Array(ref t) => Type::Array(Box::new(deref_ty(t, tyenv))),
+        Type::Array(ref t) => Type::Array(Box::new(deref_ty(t, tyenv))),
         Type::Var(ref n) => {
             if let Some(t) = tyenv.get(n) {
                 deref_ty(t, tyenv)
@@ -186,6 +188,19 @@ fn deref_term(node: &NodeKind, tyenv: &mut HashMap<usize, Type>) -> NodeKind {
             Box::new(deref_term(then_, tyenv)),
             Box::new(deref_term(else_, tyenv)),
         ),
+        NodeKind::MakeArray(ref e1, ref e2) => NodeKind::MakeArray(
+            Box::new(deref_term(e1, tyenv)),
+            Box::new(deref_term(e2, tyenv)),
+        ),
+        NodeKind::Get(ref e1, ref e2) => NodeKind::Get(
+            Box::new(deref_term(e1, tyenv)),
+            Box::new(deref_term(e2, tyenv)),
+        ),
+        NodeKind::Put(ref e1, ref e2, ref e3) => NodeKind::Put(
+            Box::new(deref_term(e1, tyenv)),
+            Box::new(deref_term(e2, tyenv)),
+            Box::new(deref_term(e3, tyenv)),
+        ),
         _ => node.clone(),
     }
 }
@@ -197,7 +212,7 @@ fn occur(r1: usize, ty: &Type) -> bool {
     match *ty {
         Type::Func(ref t2s, ref t2) => occur_list!(t2s) || occur(r1, t2),
         Type::Tuple(ref t2s) => occur_list!(t2s),
-        // Type::Array(ref t2) => occur(r1, t2),
+        Type::Array(ref t2) => occur(r1, t2),
         Type::Var(r2) => r1 == r2,
         _ => false,
     }
@@ -219,6 +234,7 @@ pub fn unify(t1: &Type, t2: &Type, tyenv: &mut HashMap<usize, Type>) -> Result<(
             }
             unify(t1r, t2r, tyenv)
         }
+        (&Type::Array(ref t1), &Type::Array(ref t2)) => unify(t1, t2, tyenv),
         (&Type::Tuple(ref t1e), &Type::Tuple(ref t2e)) => {
             if t1e.len() != t2e.len() {
                 return Err(TypeError::Unify(t1.clone(), t2.clone()));
@@ -257,6 +273,7 @@ fn subst(ty: Type, tyenv: &mut HashMap<usize, Type>, map: HashMap<usize, Type>) 
     match ty {
         Type::Unit | Type::Bool | Type::Int | Type::Float | Type::Char => ty,
         Type::Func(params, ret) => Type::Func(seq!(params), Box::new(subst(*ret, tyenv, map))),
+        Type::Array(et) => Type::Array(Box::new(subst(*et, tyenv, map))),
         Type::Tuple(es) => Type::Tuple(seq!(es)),
         Type::Var(id) => {
             if let Some(t) = map.get(&id).cloned() {
@@ -300,6 +317,7 @@ fn unwrap_var(ty: Type, tyenv: &mut HashMap<usize, Type>, freevars: &mut Vec<Typ
             seq!(params);
             unwrap_var(*ret, tyenv, freevars)
         }
+        Type::Array(et) => unwrap_var(*et, tyenv, freevars),
         Type::Tuple(es) => seq!(es),
         Type::Var(_) => freevars.push(ty.clone()),
     }
@@ -475,6 +493,31 @@ pub fn g(
             let e = try!(g(else_, env, tyenv, idgen));
             try!(unify(&t, &e, tyenv));
             Ok(t)
+        }
+        NodeKind::MakeArray(ref e1, ref e2) => {
+            try!(unify(&try!(g(e1, env, tyenv, idgen)), &Type::Int, tyenv));
+            let t = try!(g(e2, env, tyenv, idgen));
+            Ok(Type::Array(Box::new(t)))
+        }
+        NodeKind::Get(ref e1, ref e2) => {
+            let t = idgen.get_type();
+            try!(unify(
+                &try!(g(e1, env, tyenv, idgen)),
+                &Type::Array(Box::new(t.clone())),
+                tyenv
+            ));
+            try!(unify(&try!(g(e2, env, tyenv, idgen)), &Type::Int, tyenv));
+            Ok(t)
+        }
+        NodeKind::Put(ref e1, ref e2, ref e3) => {
+            let t = try!(g(e3, env, tyenv, idgen));
+            try!(unify(
+                &try!(g(e1, env, tyenv, idgen)),
+                &Type::Array(Box::new(t)),
+                tyenv
+            ));
+            try!(unify(&try!(g(e2, env, tyenv, idgen)), &Type::Int, tyenv));
+            Ok(Type::Unit)
         }
         _ => panic!(),
     }
